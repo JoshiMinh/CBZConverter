@@ -3,6 +3,7 @@ package com.puchunguita.cbzconverter
 import android.net.Uri
 import android.os.Environment
 import com.itextpdf.io.image.ImageDataFactory
+import com.itextpdf.kernel.geom.PageSize
 import com.itextpdf.kernel.pdf.PdfDocument
 import com.itextpdf.kernel.pdf.PdfWriter
 import com.itextpdf.layout.Document
@@ -252,7 +253,8 @@ private fun createMultiplePdfFromCbz(
 
         PdfWriter(outputFile.absolutePath).use { writer ->
             PdfDocument(writer).use { pdfDoc ->
-                Document(pdfDoc).use { document ->
+                Document(pdfDoc, PageSize.LETTER).use { document ->
+                    setMarginForDocument(document)
                     for ((currentImageIndex, imageFile) in imagesToProcess.withIndex()) {
                         subStepStatusAction(
                             "Processing part ${index + 1} of $amountOfFilesToExport " +
@@ -282,7 +284,8 @@ private fun createSinglePdfFromCbz(
 
     PdfWriter(outputFile.absolutePath).use { writer ->
         PdfDocument(writer).use { pdfDoc ->
-            Document(pdfDoc).use { document ->
+            Document(pdfDoc, PageSize.LETTER).use { document ->
+                setMarginForDocument(document)
                 for ((currentImageIndex, imageFile) in zipFileEntriesList.withIndex()) {
                     subStepStatusAction(
                         "Processing image file " +
@@ -295,6 +298,11 @@ private fun createSinglePdfFromCbz(
         }
         outputFiles.add(outputFile)
     }
+}
+
+private fun setMarginForDocument(document: Document){
+    // Overriding margins, due to lots of empty space at the bottom of longer pages
+    document.setMargins(15f, 10f, 15f, 10f)  // Top, Right, Bottom, Left
 }
 
 private fun extractImageAndAddToPDFDocument(
@@ -311,7 +319,14 @@ private fun extractImageAndAddToPDFDocument(
         val imageData = ImageDataFactory.create(imageFileByteArray)
         val pdfImage = Image(imageData)
 
-        // Add the image to the PDF document
+        // Adjust the PDF page size to match the image dimensions
+        val pdfPageSize = PageSize(
+            pdfImage.imageWidth,
+            pdfImage.imageHeight
+        )
+        document.pdfDocument.setDefaultPageSize(pdfPageSize)
+
+        // Add the scaled image to the PDF document
         document.add(pdfImage)
         imageInputStream.close()
     } catch (e: Exception) {
