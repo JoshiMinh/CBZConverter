@@ -9,14 +9,13 @@ import com.itextpdf.kernel.pdf.PdfWriter
 import com.itextpdf.layout.Document
 import com.itextpdf.layout.element.Image
 import java.io.File
-import java.io.FileOutputStream
+import java.io.IOException
 import java.io.InputStream
 import java.util.logging.Logger
 import java.util.stream.Collectors
 import java.util.stream.IntStream
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
-import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 import kotlin.math.ceil
 import kotlin.streams.asStream
@@ -73,21 +72,21 @@ private fun applyEachFileAndCreatePdf(
     fileUri.forEachIndexed { index, uri ->
         val outputFileName = outputFileNames[index]
 
-        val inputStream = contextHelper.openInputStream(uri) ?: run {
-            subStepStatusAction("Could not copy CBZ file to cache: $outputFileName"); return@forEachIndexed
+        try {
+            val tempFile = copyCbzToCacheAndCloseInputStream(contextHelper, subStepStatusAction, uri)
+
+            createPdfEitherSingleOrMultiple(
+                tempFile = tempFile,
+                subStepStatusAction = subStepStatusAction,
+                overrideSortOrderToUseOffset = overrideSortOrderToUseOffset,
+                outputFileName = outputFileName,
+                outputDirectory = outputDirectory,
+                maxNumberOfPages = maxNumberOfPages,
+                outputFiles = outputFiles
+            )
+        } catch (ioException: IOException) {
+            return@forEachIndexed
         }
-
-        val tempFile = copyCbzToCacheAndCloseInputStream(contextHelper, inputStream)
-
-        createPdfEitherSingleOrMultiple(
-            tempFile = tempFile,
-            subStepStatusAction = subStepStatusAction,
-            overrideSortOrderToUseOffset = overrideSortOrderToUseOffset,
-            outputFileName = outputFileName,
-            outputDirectory = outputDirectory,
-            maxNumberOfPages = maxNumberOfPages,
-            outputFiles = outputFiles
-        )
     }
     return outputFiles
 }
@@ -105,14 +104,9 @@ private fun mergeFilesAndCreatePdf(
     subStepStatusAction("Creating combined_temp.cbz in Cache")
     val combinedTempFile = File(contextHelper.getCacheDir(), "combined_temp.cbz")
 
-    ZipOutputStream(FileOutputStream(combinedTempFile)).use { zipOutputStream ->
+    ZipOutputStream(combinedTempFile.outputStream()).use { zipOutputStream ->
         fileUri.forEachIndexed() { index, uri ->
-            val inputStream = contextHelper.openInputStream(uri) ?: run {
-                subStepStatusAction("Could not copy CBZ file to cache: ${uri.path}")
-                return@forEachIndexed
-            }
-            addEntriesToZip(inputStream, zipOutputStream, outputFileNames[index], index, subStepStatusAction)
-            inputStream.close()
+            addEntriesToZip(zipOutputStream, outputFileNames[index], index, subStepStatusAction, contextHelper, uri)
         }
     }
 
@@ -150,26 +144,47 @@ private fun orderZipEntriesToList(
 }
 
 private fun addEntriesToZip(
-    inputStream: InputStream,
     zipOutputStream: ZipOutputStream,
     fileName: String,
     index: Int,
     subStepStatusAction: (String) -> Unit,
+    contextHelper: ContextHelper,
+    uri: Uri
 ) {
-    ZipInputStream(inputStream).use { zipInputStream ->
-        var zipEntry = zipInputStream.nextEntry
-        while (zipEntry != null) {
-            // Using index for ordering by name to continue functioning correctly.
-            // Adding padding to start, without it passing 10_ is between 0_ and 1_.
-            // filename is added as prefix to ensure unique naming per file, otherwise duplication error.
-            val formattedIndex = index.toString().padStart(4, '0')
-            val currentFileUniqueName = "${formattedIndex}_"+fileName+"_"+zipEntry.name
-            subStepStatusAction("Adding ZipEntry into combined_temp.cbz: $currentFileUniqueName")
-            zipOutputStream.putNextEntry(ZipEntry(currentFileUniqueName))
-            zipInputStream.copyTo(zipOutputStream)
-            zipOutputStream.closeEntry()
-            zipEntry = zipInputStream.nextEntry
+    try {
+        val tempFile = copyCbzToCacheAndCloseInputStream(contextHelper, subStepStatusAction, uri)
+        val zipFile = ZipFile(tempFile)
+        subStepStatusAction("Adding ${zipFile.size()} entries from $fileName")
+
+        zipFile.entries().asSequence().forEach { zipEntry ->
+            try {
+                // Using index for ordering by name to continue functioning correctly.
+                // Adding padding to start, without it passing 10_ is between 0_ and 1_.
+                // Padding length being 4, allows correct order when merging up to 9999 files.
+                // filename is added as prefix to ensure unique naming per file, otherwise duplication error.
+                val formattedIndex = index.toString().padStart(4, '0')
+                val currentFileUniqueName = "${formattedIndex}_${fileName}_${zipEntry.name}"
+                subStepStatusAction("Adding ZipEntry into combined_temp.cbz: $currentFileUniqueName")
+
+                // Add entry to the output ZIP
+                zipOutputStream.putNextEntry(ZipEntry(currentFileUniqueName))
+
+                // Stream the entry's data into the output stream
+                zipFile.getInputStream(zipEntry).copyTo(zipOutputStream)
+
+                // Close the current entry
+                zipOutputStream.closeEntry()
+
+            } catch (e: Exception) {
+                subStepStatusAction("Error processing file ${zipEntry.name}")
+                logger.warning("Exception message: ${e.message}")
+                logger.warning("Exception stacktrace: ${e.stackTrace.contentToString()}")
+            }
         }
+
+        zipFile.close()
+    } catch (ioException: IOException) {
+        return
     }
 }
 
@@ -221,8 +236,13 @@ fun createPdfEitherSingleOrMultiple(
     return outputFiles
 }
 
-private fun copyCbzToCacheAndCloseInputStream(contextHelper: ContextHelper, inputStream: InputStream): File {
+@Throws(IOException::class)
+private fun copyCbzToCacheAndCloseInputStream(contextHelper: ContextHelper, subStepStatusAction: (String) -> Unit, uri: Uri): File {
     val tempFile = File(contextHelper.getCacheDir(), "temp.cbz")
+    val inputStream = contextHelper.openInputStream(uri) ?: run {
+        subStepStatusAction("Could not copy CBZ file to cache: ${uri.path}")
+        throw IOException("Could not copy CBZ file to cache: ${uri.path}")
+    }
     tempFile.outputStream().use { outputStream ->
         inputStream.copyTo(outputStream)
     }
