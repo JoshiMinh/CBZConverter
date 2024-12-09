@@ -82,7 +82,8 @@ private fun applyEachFileAndCreatePdf(
                 outputFileName = outputFileName,
                 outputDirectory = outputDirectory,
                 maxNumberOfPages = maxNumberOfPages,
-                outputFiles = outputFiles
+                outputFiles = outputFiles,
+                contextHelper = contextHelper
             )
         } catch (ioException: IOException) {
             return@forEachIndexed
@@ -119,7 +120,8 @@ private fun mergeFilesAndCreatePdf(
         outputFileName = outputFileName,
         outputDirectory = outputDirectory,
         maxNumberOfPages = maxNumberOfPages,
-        outputFiles = outputFiles
+        outputFiles = outputFiles,
+        contextHelper = contextHelper
     )
 
     return outputFiles
@@ -164,7 +166,6 @@ private fun addEntriesToZip(
                 // filename is added as prefix to ensure unique naming per file, otherwise duplication error.
                 val formattedIndex = index.toString().padStart(4, '0')
                 val currentFileUniqueName = "${formattedIndex}_${fileName}_${zipEntry.name}"
-                subStepStatusAction("Adding ZipEntry into combined_temp.cbz: $currentFileUniqueName")
 
                 // Add entry to the output ZIP
                 zipOutputStream.putNextEntry(ZipEntry(currentFileUniqueName))
@@ -174,6 +175,7 @@ private fun addEntriesToZip(
 
                 // Close the current entry
                 zipOutputStream.closeEntry()
+                zipOutputStream.flush()
 
             } catch (e: Exception) {
                 subStepStatusAction("Error processing file ${zipEntry.name}")
@@ -196,7 +198,8 @@ fun createPdfEitherSingleOrMultiple(
     outputFileName: String,
     outputDirectory: File,
     maxNumberOfPages: Int,
-    outputFiles: MutableList<File>
+    outputFiles: MutableList<File>,
+    contextHelper: ContextHelper
 
 ): MutableList<File> {
     val zipFile = ZipFile(tempFile)
@@ -217,7 +220,8 @@ fun createPdfEitherSingleOrMultiple(
             outputDirectory,
             subStepStatusAction,
             zipFile,
-            outputFiles
+            outputFiles,
+            contextHelper
         )
     } else {
         createSinglePdfFromCbz(
@@ -227,7 +231,8 @@ fun createPdfEitherSingleOrMultiple(
             subStepStatusAction,
             totalNumberOfImages,
             zipFile,
-            outputFiles
+            outputFiles,
+            contextHelper
         )
     }
 
@@ -259,7 +264,8 @@ private fun createMultiplePdfFromCbz(
     outputDirectory: File?,
     subStepStatusAction: (String) -> Unit,
     zipFile: ZipFile,
-    outputFiles: MutableList<File>
+    outputFiles: MutableList<File>,
+    contextHelper: ContextHelper
 ) {
     val amountOfFilesToExport = ceil(totalNumberOfImages.toDouble() / maxNumberOfPages).toInt()
 
@@ -283,7 +289,7 @@ private fun createMultiplePdfFromCbz(
                                     "${index.times(maxNumberOfPages) + currentImageIndex + 1} " +
                                     "of $totalNumberOfImages"
                         )
-                        extractImageAndAddToPDFDocument(zipFile, imageFile, document)
+                        extractImageAndAddToPDFDocument(zipFile, imageFile, document, contextHelper)
                     }
                 }
             }
@@ -299,7 +305,8 @@ private fun createSinglePdfFromCbz(
     subStepStatusAction: (String) -> Unit,
     totalNumberOfImages: Int,
     zipFile: ZipFile,
-    outputFiles: MutableList<File>
+    outputFiles: MutableList<File>,
+    contextHelper: ContextHelper
 ) {
     val outputFile = File(outputDirectory, outputFileName)
 
@@ -313,7 +320,7 @@ private fun createSinglePdfFromCbz(
                                 "${currentImageIndex + 1} " +
                                 "of $totalNumberOfImages"
                     )
-                    extractImageAndAddToPDFDocument(zipFile, imageFile, document)
+                    extractImageAndAddToPDFDocument(zipFile, imageFile, document, contextHelper)
                 }
             }
         }
@@ -329,16 +336,19 @@ private fun setMarginForDocument(document: Document){
 private fun extractImageAndAddToPDFDocument(
     zipFile: ZipFile,
     zipFileEntry: ZipEntry,
-    document: Document
+    document: Document,
+    contextHelper: ContextHelper
 ) {
-    val imageInputStream: InputStream
-
     try {
-        imageInputStream = zipFile.getInputStream(zipFileEntry)
+        // Create temp file to avoid large memory usage
+        val tempFile = File(contextHelper.getCacheDir(), "temp_image")
+        tempFile.outputStream().use { tempFileOutputStream ->
+            zipFile.getInputStream(zipFileEntry).use {
+                imageInputStream -> tempFileOutputStream.write(imageInputStream.readBytes())
+            }
+        }
 
-        val imageFileByteArray = imageInputStream.readBytes()
-        val imageData = ImageDataFactory.create(imageFileByteArray)
-        val pdfImage = Image(imageData)
+        val pdfImage = Image(ImageDataFactory.create(tempFile.absolutePath))
 
         // Adjust the PDF page size to match the image dimensions
         val pdfPageSize = PageSize(
@@ -349,7 +359,8 @@ private fun extractImageAndAddToPDFDocument(
 
         // Add the scaled image to the PDF document
         document.add(pdfImage)
-        imageInputStream.close()
+        document.flush()
+        tempFile.delete()
     } catch (e: Exception) {
         logger.warning("ImageExtraction $e Error processing file ${zipFileEntry.name}")
     }

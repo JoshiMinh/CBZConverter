@@ -98,16 +98,16 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
     }
 
     private fun updateCurrentTaskStatusMessageByAppending(message: String) {
-        _currentTaskStatus.update { currentMessage -> currentMessage.plus("\n$message") }
+        _currentTaskStatus.update { currentMessage -> message.plus("\n$currentMessage") }
     }
 
     private fun updateCurrentSubTaskStatusMessage(message: String) {
         _currentSubTaskStatus.update { message }
     }
 
-    private suspend fun updateCurrentSubTaskStatusStatusMessage(message: String) {
+    private suspend fun updateCurrentSubTaskStatusMessageSuspendByAppending(message: String) {
         withContext(Dispatchers.Main) {
-            _currentSubTaskStatus.update { currentMessage -> currentMessage.plus("\n$message") }
+            _currentSubTaskStatus.update { currentMessage -> message.plus("\n$currentMessage") }
             logger.info(message)
         }
     }
@@ -209,12 +209,13 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
                 val outputFolder = getOutputFolder()
 
                 updateCurrentTaskStatusMessageSuspend(message = "Conversion from CBZ to PDF started")
+                updateCurrentSubTaskStatusMessage(message = "")
                 val pdfFiles = convertCbzToPdf(
                     fileUri = fileUris,
                     contextHelper = contextHelper,
                     subStepStatusAction = { message: String ->
                         CoroutineScope(Dispatchers.Main).launch {
-                            updateCurrentSubTaskStatusStatusMessage(message)
+                            updateCurrentSubTaskStatusMessageSuspendByAppending(message)
                         }
                     },
                     maxNumberOfPages = _maxNumberOfPages.value,
