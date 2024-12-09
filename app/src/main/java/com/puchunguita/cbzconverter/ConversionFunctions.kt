@@ -183,6 +183,7 @@ private fun addEntriesToZip(
         }
 
         zipFile.close()
+        tempFile.delete()
     } catch (ioException: IOException) {
         return
     }
