@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -74,29 +76,25 @@ private fun TasksStatusSegment(currentTaskStatus: String, currentSubTaskStatus: 
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(text = "Current Task Status (Scrollable):", fontWeight = FontWeight.SemiBold)
-        Column(
+        LazyColumn(
             Modifier.height(100.dp),
-            verticalArrangement = Arrangement.Center,
+            verticalArrangement = Arrangement.Center
         ) {
-            val scroll = rememberScrollState(0)
-            LaunchedEffect(currentTaskStatus) {
-                scroll.animateScrollTo(scroll.maxValue)
+            items(currentTaskStatus.lines()) { line ->
+                Text(text = line)
             }
-            Text(text = currentTaskStatus, modifier = Modifier.verticalScroll(scroll))
         }
 
         Spacer(modifier = Modifier.height(16.dp))
 
         Text(text = "Current Sub-Task Status (Scrollable):", fontWeight = FontWeight.SemiBold)
-        Column(
+        LazyColumn(
             Modifier.height(130.dp),
-            verticalArrangement = Arrangement.Center,
+            verticalArrangement = Arrangement.Center
         ) {
-            val scroll = rememberScrollState(0)
-            LaunchedEffect(currentSubTaskStatus) {
-                scroll.animateScrollTo(scroll.maxValue)
+            items(currentSubTaskStatus.lines()) { line ->
+                Text(text = line)
             }
-            Text(text = currentSubTaskStatus, modifier = Modifier.verticalScroll(scroll))
         }
     }
 }
