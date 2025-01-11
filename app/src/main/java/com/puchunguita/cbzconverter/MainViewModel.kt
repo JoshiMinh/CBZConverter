@@ -26,7 +26,7 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
         private const val NOTHING_PROCESSING = "Nothing Processing"
         private const val NO_FILE_SELECTED = "No file selected"
         const val EMPTY_STRING = ""
-        private const val DEFAULT_MAX_NUMBER_OF_PAGES = 500
+        private const val DEFAULT_MAX_NUMBER_OF_PAGES = 10000
     }
 
     private val logger = Logger.getLogger(MainViewModel::class.java.name)

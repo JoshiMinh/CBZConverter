@@ -5,12 +5,13 @@ import android.os.Environment
 import com.itextpdf.io.image.ImageDataFactory
 import com.itextpdf.kernel.geom.PageSize
 import com.itextpdf.kernel.pdf.PdfDocument
+import com.itextpdf.kernel.pdf.PdfReader
 import com.itextpdf.kernel.pdf.PdfWriter
+import com.itextpdf.kernel.utils.PdfMerger
 import com.itextpdf.layout.Document
 import com.itextpdf.layout.element.Image
 import java.io.File
 import java.io.IOException
-import java.io.InputStream
 import java.util.logging.Logger
 import java.util.stream.Collectors
 import java.util.stream.IntStream
@@ -21,6 +22,7 @@ import kotlin.math.ceil
 import kotlin.streams.asStream
 
 private val logger = Logger.getLogger("com.puchunguita.cbzconverter.ConversionFunction")
+private val COMBINED_TEMP_CBZ_FILE = "combined_temp.cbz"
 fun convertCbzToPdf(
     fileUri: List<Uri>,
     contextHelper: ContextHelper,
@@ -33,6 +35,7 @@ fun convertCbzToPdf(
 ): List<File> {
     if (fileUri.isEmpty()) { return mutableListOf() }
     val outputFiles = mutableListOf<File>()
+    contextHelper.getCacheDir().deleteRecursively()
 
     if (overrideMergeFiles) {
         return mergeFilesAndCreatePdf(
@@ -102,8 +105,8 @@ private fun mergeFilesAndCreatePdf(
     outputDirectory: File,
     maxNumberOfPages: Int
 ): MutableList<File> {
-    subStepStatusAction("Creating combined_temp.cbz in Cache")
-    val combinedTempFile = File(contextHelper.getCacheDir(), "combined_temp.cbz")
+    subStepStatusAction("Creating $COMBINED_TEMP_CBZ_FILE in Cache")
+    val combinedTempFile = File(contextHelper.getCacheDir(), COMBINED_TEMP_CBZ_FILE)
 
     ZipOutputStream(combinedTempFile.outputStream()).use { zipOutputStream ->
         fileUri.forEachIndexed() { index, uri ->
@@ -162,9 +165,9 @@ private fun addEntriesToZip(
             try {
                 // Using index for ordering by name to continue functioning correctly.
                 // Adding padding to start, without it passing 10_ is between 0_ and 1_.
-                // Padding length being 4, allows correct order when merging up to 9999 files.
+                // Padding length being 9, allows correct order when merging up to 999,999,999 files.
                 // filename is added as prefix to ensure unique naming per file, otherwise duplication error.
-                val formattedIndex = index.toString().padStart(4, '0')
+                val formattedIndex = index.toString().padStart(9, '0')
                 val currentFileUniqueName = "${formattedIndex}_${fileName}_${zipEntry.name}"
 
                 // Add entry to the output ZIP
@@ -225,11 +228,11 @@ fun createPdfEitherSingleOrMultiple(
         )
     } else {
         createSinglePdfFromCbz(
+            totalNumberOfImages,
             zipFileEntriesList,
             outputFileName,
             outputDirectory,
             subStepStatusAction,
-            totalNumberOfImages,
             zipFile,
             outputFiles,
             contextHelper
@@ -280,7 +283,7 @@ private fun createMultiplePdfFromCbz(
 
         PdfWriter(outputFile.absolutePath).use { writer ->
             PdfDocument(writer).use { pdfDoc ->
-                Document(pdfDoc, PageSize.LETTER).use { document ->
+                Document(pdfDoc, PageSize.LETTER, true).use { document ->
                     setMarginForDocument(document)
                     for ((currentImageIndex, imageFile) in imagesToProcess.withIndex()) {
                         subStepStatusAction(
@@ -299,20 +302,41 @@ private fun createMultiplePdfFromCbz(
 }
 
 private fun createSinglePdfFromCbz(
+    totalNumberOfImages: Int,
     zipFileEntriesList: List<ZipEntry>,
     outputFileName: String,
     outputDirectory: File?,
     subStepStatusAction: (String) -> Unit,
-    totalNumberOfImages: Int,
     zipFile: ZipFile,
     outputFiles: MutableList<File>,
-    contextHelper: ContextHelper
+    contextHelper: ContextHelper,
+    batchSize: Int = 300 // Default batch size of 300 pages
 ) {
+    // Used to circumvent the 512 MB max Ram usage on android apps
+    // it splits the total files into batches of 300 pages
+    // then merges them into a single pdf while only having 300 pages open in memory at a time
+    if (totalNumberOfImages > batchSize){
+        createMultiplePdfFromCbz(
+            totalNumberOfImages,
+            batchSize,
+            zipFileEntriesList,
+            outputFileName,
+            contextHelper.getCacheDir(),
+            subStepStatusAction,
+            zipFile,
+            outputFiles,
+            contextHelper
+        )
+        File(contextHelper.getCacheDir(), COMBINED_TEMP_CBZ_FILE).delete()
+        mergePdfFiles(outputDirectory, outputFileName, outputFiles)
+        return
+    }
+
     val outputFile = File(outputDirectory, outputFileName)
 
     PdfWriter(outputFile.absolutePath).use { writer ->
         PdfDocument(writer).use { pdfDoc ->
-            Document(pdfDoc, PageSize.LETTER).use { document ->
+            Document(pdfDoc, PageSize.LETTER, true).use { document ->
                 setMarginForDocument(document)
                 for ((currentImageIndex, imageFile) in zipFileEntriesList.withIndex()) {
                     subStepStatusAction(
@@ -322,10 +346,35 @@ private fun createSinglePdfFromCbz(
                     )
                     extractImageAndAddToPDFDocument(zipFile, imageFile, document, contextHelper)
                 }
+                pdfDoc.writer.flush()
+                writer.flush()
+                document.close()
             }
         }
         outputFiles.add(outputFile)
     }
+}
+
+private fun mergePdfFiles(outputDirectory: File?, outputFileName: String, outputFiles: MutableList<File>){
+    val outputFile = File(outputDirectory, outputFileName)
+    val outputStream = outputFile.outputStream()
+    val pdfWriter = PdfWriter(outputStream)
+    val finalPdfDocument = PdfDocument(pdfWriter)
+    val pdfMerger = PdfMerger(finalPdfDocument)
+
+    outputFiles.forEachIndexed { index, file ->
+        PdfDocument(PdfReader(file)).use{ pdfDocument ->
+            pdfMerger.merge(pdfDocument, 1, pdfDocument.numberOfPages)
+            finalPdfDocument.flushCopiedObjects(pdfDocument)
+            pdfDocument.close()
+            outputStream.flush()
+            pdfWriter.flush()
+        }
+        file.delete()
+    }
+    pdfMerger.close()
+    outputFiles.clear()
+    outputFiles.add(outputFile)
 }
 
 private fun setMarginForDocument(document: Document){

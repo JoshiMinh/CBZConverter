@@ -12,7 +12,7 @@ android {
         minSdk = 24
         targetSdk = 35
         versionCode = 1
-        versionName = "1.0"
+        versionName = "1.0.4"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -53,7 +53,7 @@ android {
 dependencies {
 
     implementation ("com.anggrayudi:storage:2.0.0")
-    implementation("com.itextpdf:itext7-core:7.2.6")
+    implementation("com.itextpdf:itext-core:9.0.0")
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
