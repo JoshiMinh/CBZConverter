@@ -27,6 +27,7 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
         private const val NO_FILE_SELECTED = "No file selected"
         const val EMPTY_STRING = ""
         private const val DEFAULT_MAX_NUMBER_OF_PAGES = 10000
+        private const val DEFAULT_BATCH_SIZE = 300
     }
 
     private val logger = Logger.getLogger(MainViewModel::class.java.name)
@@ -42,6 +43,9 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
 
     private val _maxNumberOfPages: MutableStateFlow<Int> = MutableStateFlow(DEFAULT_MAX_NUMBER_OF_PAGES)
     val maxNumberOfPages = _maxNumberOfPages.asStateFlow()
+
+    private val _batchSize: MutableStateFlow<Int> = MutableStateFlow(DEFAULT_BATCH_SIZE)
+    val batchSize = _batchSize.asStateFlow()
 
     private val _overrideSortOrderToUseOffset: MutableStateFlow<Boolean> = MutableStateFlow(FALSE)
     val overrideSortOrderToUseOffset = _overrideSortOrderToUseOffset.asStateFlow()
@@ -116,6 +120,10 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
         _maxNumberOfPages.update { maxNumberOfPages }
     }
 
+    private fun updateBatchSize(batchSize: Int) {
+        _batchSize.update { batchSize }
+    }
+
     fun updateMaxNumberOfPagesSizeFromUserInput(maxNumberOfPages: String) {
         try {
             updateMaxNumberOfPages(maxNumberOfPages.trim().toInt())
@@ -123,6 +131,18 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
         } catch (e: Exception) {
             updateCurrentTaskStatusMessageByAppending("Invalid maxNumberOfPages size: $maxNumberOfPages reverting to default value")
             updateMaxNumberOfPages(DEFAULT_MAX_NUMBER_OF_PAGES)
+        }
+    }
+
+    fun updateBatchSizeFromUserInput(batchSize: String) {
+        try {
+            val newBatchSize = batchSize.trim().toInt()
+            if (newBatchSize <= 0) throw Exception("Batch size must be positive")
+            updateBatchSize(newBatchSize)
+            updateCurrentTaskStatusMessageByAppending("Updated batch size: $newBatchSize")
+        } catch (e: Exception) {
+            updateCurrentTaskStatusMessageByAppending("Invalid batch size: $batchSize reverting to default value")
+            updateBatchSize(DEFAULT_BATCH_SIZE)
         }
     }
 
@@ -219,6 +239,7 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
                         }
                     },
                     maxNumberOfPages = _maxNumberOfPages.value,
+                    batchSize = _batchSize.value,
                     outputFileNames = pdfFileName,
                     overrideSortOrderToUseOffset = _overrideSortOrderToUseOffset.value,
                     overrideMergeFiles = _overrideMergeFiles.value,

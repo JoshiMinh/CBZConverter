@@ -28,6 +28,7 @@ fun convertCbzToPdf(
     contextHelper: ContextHelper,
     subStepStatusAction: (String) -> Unit = { status -> logger.info(status) },
     maxNumberOfPages: Int = 100,
+    batchSize: Int = 300,
     outputFileNames: List<String> = List(fileUri.size) { index -> "output_$index.pdf" },
     overrideSortOrderToUseOffset: Boolean = false,
     overrideMergeFiles: Boolean = false,
@@ -46,7 +47,8 @@ fun convertCbzToPdf(
             outputFiles,
             overrideSortOrderToUseOffset,
             outputDirectory,
-            maxNumberOfPages
+            maxNumberOfPages,
+            batchSize
         )
     } else {
         return applyEachFileAndCreatePdf(
@@ -57,7 +59,8 @@ fun convertCbzToPdf(
             outputFiles,
             overrideSortOrderToUseOffset,
             outputDirectory,
-            maxNumberOfPages
+            maxNumberOfPages,
+            batchSize
         )
     }
 }
@@ -70,7 +73,8 @@ private fun applyEachFileAndCreatePdf(
     outputFiles: MutableList<File>,
     overrideSortOrderToUseOffset: Boolean,
     outputDirectory: File,
-    maxNumberOfPages: Int
+    maxNumberOfPages: Int,
+    batchSize: Int
 ): MutableList<File> {
     fileUri.forEachIndexed { index, uri ->
         val outputFileName = outputFileNames[index]
@@ -86,7 +90,8 @@ private fun applyEachFileAndCreatePdf(
                 outputDirectory = outputDirectory,
                 maxNumberOfPages = maxNumberOfPages,
                 outputFiles = outputFiles,
-                contextHelper = contextHelper
+                contextHelper = contextHelper,
+                batchSize = batchSize
             )
         } catch (ioException: IOException) {
             return@forEachIndexed
@@ -103,13 +108,14 @@ private fun mergeFilesAndCreatePdf(
     outputFiles: MutableList<File>,
     overrideSortOrderToUseOffset: Boolean,
     outputDirectory: File,
-    maxNumberOfPages: Int
+    maxNumberOfPages: Int,
+    batchSize: Int
 ): MutableList<File> {
     subStepStatusAction("Creating $COMBINED_TEMP_CBZ_FILE in Cache")
     val combinedTempFile = File(contextHelper.getCacheDir(), COMBINED_TEMP_CBZ_FILE)
 
     ZipOutputStream(combinedTempFile.outputStream()).use { zipOutputStream ->
-        fileUri.forEachIndexed() { index, uri ->
+        fileUri.forEachIndexed { index, uri ->
             addEntriesToZip(zipOutputStream, outputFileNames[index], index, subStepStatusAction, contextHelper, uri)
         }
     }
@@ -124,7 +130,8 @@ private fun mergeFilesAndCreatePdf(
         outputDirectory = outputDirectory,
         maxNumberOfPages = maxNumberOfPages,
         outputFiles = outputFiles,
-        contextHelper = contextHelper
+        contextHelper = contextHelper,
+        batchSize = batchSize
     )
 
     return outputFiles
@@ -202,8 +209,8 @@ fun createPdfEitherSingleOrMultiple(
     outputDirectory: File,
     maxNumberOfPages: Int,
     outputFiles: MutableList<File>,
-    contextHelper: ContextHelper
-
+    contextHelper: ContextHelper,
+    batchSize: Int
 ): MutableList<File> {
     val zipFile = ZipFile(tempFile)
 
@@ -224,7 +231,8 @@ fun createPdfEitherSingleOrMultiple(
             subStepStatusAction,
             zipFile,
             outputFiles,
-            contextHelper
+            contextHelper,
+            batchSize
         )
     } else {
         createSinglePdfFromCbz(
@@ -235,7 +243,8 @@ fun createPdfEitherSingleOrMultiple(
             subStepStatusAction,
             zipFile,
             outputFiles,
-            contextHelper
+            contextHelper,
+            batchSize
         )
     }
 
@@ -259,6 +268,37 @@ private fun copyCbzToCacheAndCloseInputStream(contextHelper: ContextHelper, subS
     return tempFile
 }
 
+internal fun calculateRange(index: Int, pageSize: Int, totalItems: Int): Pair<Int, Int> {
+    val startIndex = index.times(pageSize)
+    val nextPossibleEndIndex = index.plus(1).times(pageSize)
+    val endIndex = if (nextPossibleEndIndex > totalItems) totalItems else nextPossibleEndIndex
+    return Pair(startIndex, endIndex)
+}
+
+private fun createPdfFromImageList(
+    imagesToProcess: List<ZipEntry>,
+    outputFile: File,
+    zipFile: ZipFile,
+    contextHelper: ContextHelper,
+    subStepStatusAction: (String) -> Unit,
+    messageFormat: (Int) -> String
+) {
+    PdfWriter(outputFile.absolutePath).use { writer ->
+        PdfDocument(writer).use { pdfDoc ->
+            Document(pdfDoc, PageSize.LETTER, true).use { document ->
+                setMarginForDocument(document)
+                for ((currentImageIndex, imageFile) in imagesToProcess.withIndex()) {
+                    subStepStatusAction(messageFormat(currentImageIndex + 1))
+                    extractImageAndAddToPDFDocument(zipFile, imageFile, document, contextHelper)
+                }
+                pdfDoc.writer.flush()
+                writer.flush()
+                document.close()
+            }
+        }
+    }
+}
+
 private fun createMultiplePdfFromCbz(
     totalNumberOfImages: Int,
     maxNumberOfPages: Int,
@@ -268,37 +308,101 @@ private fun createMultiplePdfFromCbz(
     subStepStatusAction: (String) -> Unit,
     zipFile: ZipFile,
     outputFiles: MutableList<File>,
-    contextHelper: ContextHelper
+    contextHelper: ContextHelper,
+    batchSize: Int
 ) {
     val amountOfFilesToExport = ceil(totalNumberOfImages.toDouble() / maxNumberOfPages).toInt()
 
     IntStream.range(0, amountOfFilesToExport).forEach { index ->
         val newOutputFileName = outputFileName.replace(".pdf", "_part-${index + 1}.pdf")
         val outputFile = File(outputDirectory, newOutputFileName)
-        val startIndex = index.times(maxNumberOfPages)
-        val nextPossibleEndIndex = index.plus(1).times(maxNumberOfPages)
-        val endIndex =
-            if (nextPossibleEndIndex > totalNumberOfImages) totalNumberOfImages else nextPossibleEndIndex
+        val (startIndex, endIndex) = calculateRange(index, maxNumberOfPages, totalNumberOfImages)
         val imagesToProcess = zipFileEntriesList.subList(startIndex, endIndex)
+        val imagesInThisPart = imagesToProcess.size
 
-        PdfWriter(outputFile.absolutePath).use { writer ->
-            PdfDocument(writer).use { pdfDoc ->
-                Document(pdfDoc, PageSize.LETTER, true).use { document ->
-                    setMarginForDocument(document)
-                    for ((currentImageIndex, imageFile) in imagesToProcess.withIndex()) {
-                        subStepStatusAction(
-                            "Processing part ${index + 1} of $amountOfFilesToExport " +
-                                    "- Processing image file " +
-                                    "${index.times(maxNumberOfPages) + currentImageIndex + 1} " +
-                                    "of $totalNumberOfImages"
-                        )
-                        extractImageAndAddToPDFDocument(zipFile, imageFile, document, contextHelper)
-                    }
+        // Check if this part needs memory batch processing to avoid memory issues
+        if (imagesInThisPart > batchSize) {
+            // Use memory batch processing for this part
+            val processedFile = createPdfWithBatchProcessing(
+                totalNumberOfImages = imagesInThisPart,
+                zipFileEntriesList = imagesToProcess,
+                outputFileName = newOutputFileName,
+                outputDirectory = outputDirectory,
+                subStepStatusAction = { message ->
+                    subStepStatusAction(
+                        "Processing part ${index + 1} of $amountOfFilesToExport - $message"
+                    )
+                },
+                zipFile = zipFile,
+                contextHelper = contextHelper,
+                batchSize = batchSize
+            )
+            outputFiles.add(processedFile)
+        } else {
+            // Process normally without memory batch processing
+            createPdfFromImageList(
+                imagesToProcess = imagesToProcess,
+                outputFile = outputFile,
+                zipFile = zipFile,
+                contextHelper = contextHelper,
+                subStepStatusAction = subStepStatusAction,
+                messageFormat = { currentImageIndex ->
+                    "Processing part ${index + 1} of $amountOfFilesToExport " +
+                            "- Processing image file " +
+                            "${startIndex + currentImageIndex} " +
+                            "of $totalNumberOfImages"
                 }
-            }
+            )
             outputFiles.add(outputFile)
         }
     }
+}
+
+private fun createPdfWithBatchProcessing(
+    totalNumberOfImages: Int,
+    zipFileEntriesList: List<ZipEntry>,
+    outputFileName: String,
+    outputDirectory: File?,
+    subStepStatusAction: (String) -> Unit,
+    zipFile: ZipFile,
+    contextHelper: ContextHelper,
+    batchSize: Int
+): File {
+    // Used to circumvent the 512 MB max Ram usage on android apps
+    // it splits the total files into memory batches and then merges them into a single pdf
+    // while only having batchSize pages open in memory at a time
+    val tempOutputFiles = mutableListOf<File>()
+    
+    val amountOfMemoryBatches = ceil(totalNumberOfImages.toDouble() / batchSize).toInt()
+    
+    IntStream.range(0, amountOfMemoryBatches).forEach { memoryBatchIndex ->
+        val tempMemoryBatchFileName = "temp_memory_batch_${memoryBatchIndex + 1}.pdf"
+        val tempBatchFile = File(contextHelper.getCacheDir(), tempMemoryBatchFileName)
+        
+        val (startIndex, endIndex) = calculateRange(memoryBatchIndex, batchSize, totalNumberOfImages)
+        val imagesToProcess = zipFileEntriesList.subList(startIndex, endIndex)
+
+        createPdfFromImageList(
+            imagesToProcess = imagesToProcess,
+            outputFile = tempBatchFile,
+            zipFile = zipFile,
+            contextHelper = contextHelper,
+            subStepStatusAction = subStepStatusAction,
+            messageFormat = { currentImageIndex ->
+                "Processing memory batch ${memoryBatchIndex + 1} of $amountOfMemoryBatches " +
+                        "- Processing image file " +
+                        "${startIndex + currentImageIndex} " +
+                        "of $totalNumberOfImages"
+            }
+        )
+        tempOutputFiles.add(tempBatchFile)
+    }
+    
+    // Merge all memory batch files into the final output file
+    mergePdfFiles(outputDirectory, outputFileName, tempOutputFiles)
+    
+    // Return the final merged file
+    return File(outputDirectory, outputFileName)
 }
 
 private fun createSinglePdfFromCbz(
@@ -310,49 +414,38 @@ private fun createSinglePdfFromCbz(
     zipFile: ZipFile,
     outputFiles: MutableList<File>,
     contextHelper: ContextHelper,
-    batchSize: Int = 300 // Default batch size of 300 pages
+    batchSize: Int
 ) {
-    // Used to circumvent the 512 MB max Ram usage on android apps
-    // it splits the total files into batches of 300 pages
-    // then merges them into a single pdf while only having 300 pages open in memory at a time
     if (totalNumberOfImages > batchSize){
-        createMultiplePdfFromCbz(
+        val processedFile = createPdfWithBatchProcessing(
             totalNumberOfImages,
-            batchSize,
             zipFileEntriesList,
             outputFileName,
-            contextHelper.getCacheDir(),
+            outputDirectory,
             subStepStatusAction,
             zipFile,
-            outputFiles,
-            contextHelper
+            contextHelper,
+            batchSize
         )
-        File(contextHelper.getCacheDir(), COMBINED_TEMP_CBZ_FILE).delete()
-        mergePdfFiles(outputDirectory, outputFileName, outputFiles)
+        outputFiles.add(processedFile)
         return
     }
 
     val outputFile = File(outputDirectory, outputFileName)
 
-    PdfWriter(outputFile.absolutePath).use { writer ->
-        PdfDocument(writer).use { pdfDoc ->
-            Document(pdfDoc, PageSize.LETTER, true).use { document ->
-                setMarginForDocument(document)
-                for ((currentImageIndex, imageFile) in zipFileEntriesList.withIndex()) {
-                    subStepStatusAction(
-                        "Processing image file " +
-                                "${currentImageIndex + 1} " +
-                                "of $totalNumberOfImages"
-                    )
-                    extractImageAndAddToPDFDocument(zipFile, imageFile, document, contextHelper)
-                }
-                pdfDoc.writer.flush()
-                writer.flush()
-                document.close()
-            }
+    createPdfFromImageList(
+        imagesToProcess = zipFileEntriesList,
+        outputFile = outputFile,
+        zipFile = zipFile,
+        contextHelper = contextHelper,
+        subStepStatusAction = subStepStatusAction,
+        messageFormat = { currentImageIndex ->
+            "Processing image file " +
+                    "$currentImageIndex " +
+                    "of $totalNumberOfImages"
         }
-        outputFiles.add(outputFile)
-    }
+    )
+    outputFiles.add(outputFile)
 }
 
 private fun mergePdfFiles(outputDirectory: File?, outputFileName: String, outputFiles: MutableList<File>){
@@ -362,7 +455,7 @@ private fun mergePdfFiles(outputDirectory: File?, outputFileName: String, output
     val finalPdfDocument = PdfDocument(pdfWriter)
     val pdfMerger = PdfMerger(finalPdfDocument)
 
-    outputFiles.forEachIndexed { index, file ->
+    outputFiles.forEachIndexed { _, file ->
         PdfDocument(PdfReader(file)).use{ pdfDocument ->
             pdfMerger.merge(pdfDocument, 1, pdfDocument.numberOfPages)
             finalPdfDocument.flushCopiedObjects(pdfDocument)

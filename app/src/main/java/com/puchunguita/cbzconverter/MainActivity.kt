@@ -51,6 +51,7 @@ fun MainScreen(viewModel: MainViewModel, activity: ComponentActivity, modifier: 
     val currentTaskStatus by viewModel.currentTaskStatus.collectAsState()
     val currentSubTaskStatus by viewModel.currentSubTaskStatus.collectAsState()
     val maxNumberOfPages by viewModel.maxNumberOfPages.collectAsState()
+    val batchSize by viewModel.batchSize.collectAsState()
     val overrideSortOrderToUseOffset by viewModel.overrideSortOrderToUseOffset.collectAsState()
     val overrideMergeFiles by viewModel.overrideMergeFiles.collectAsState()
     val selectedFileName by viewModel.selectedFileName.collectAsState()
@@ -77,6 +78,7 @@ fun MainScreen(viewModel: MainViewModel, activity: ComponentActivity, modifier: 
         sheetContent = {
             ConfigurationPage(
                 maxNumberOfPages,
+                batchSize,
                 viewModel,
                 isCurrentlyConverting,
                 overrideSortOrderToUseOffset,
