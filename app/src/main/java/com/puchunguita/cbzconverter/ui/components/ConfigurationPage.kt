@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
@@ -37,6 +39,7 @@ import com.puchunguita.cbzconverter.ui.theme.CbzConverterTheme
 @Composable
 fun ConfigurationPage(
     maxNumberOfPages: Int,
+    batchSize: Int,
     viewModel: MainViewModel,
     isCurrentlyConverting: Boolean,
     overrideSortOrderToUseOffset: Boolean,
@@ -47,12 +50,16 @@ fun ConfigurationPage(
     activity: ComponentActivity,
     directoryPickerLauncher: ManagedActivityResultLauncher<Uri?, Uri?>
 ) {
+    val scrollState = rememberScrollState()
+    
     Column(
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier
+            .fillMaxWidth()
+            .verticalScroll(scrollState)
     ) {
-        Text(text = "Configurations (Swipe Up) ")
+        Text(text = "Configurations (Swipe Up to see all options)")
 
         Spacer(modifier = Modifier.height(16.dp))
         Divider()
@@ -62,6 +69,17 @@ fun ConfigurationPage(
 
         MaxNumberOfPagesConfigSegment(
             maxNumberOfPages,
+            viewModel,
+            focusManager,
+            isCurrentlyConverting
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+        Divider()
+        Spacer(modifier = Modifier.height(16.dp))
+
+        BatchSizeConfigSegment(
+            batchSize,
             viewModel,
             focusManager,
             isCurrentlyConverting
@@ -237,12 +255,53 @@ private fun MaxNumberOfPagesConfigSegment(
     )
 }
 
+@Composable
+private fun BatchSizeConfigSegment(
+    batchSize: Int,
+    viewModel: MainViewModel,
+    focusManager: FocusManager,
+    isCurrentlyConverting: Boolean
+) {
+    Text(
+        text = "Memory Batch Size: $batchSize\n" +
+                "Controls memory usage by processing images in memory batches.\n" +
+                "Lower values use less memory but may be slower.\n" +
+                "Higher values are faster but use more memory.\n" +
+                "Note: Does not affect end result, only memory usage.\n" +
+                "Note: If you are having issues with memory running out when converting, try lowering this value. Suggestion: 20-50 pages under the number where it failed to convert. (e.g. failed when converting page \"203\" change value to \"150\")"
+    )
+    Spacer(modifier = Modifier.height(16.dp))
+    var tempBatchSize by remember { mutableStateOf(batchSize.toString()) }
+    TextField(
+        value = tempBatchSize,
+        onValueChange = { tempBatchSize = it },
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+        keyboardActions = KeyboardActions(onDone = {
+            viewModel.updateBatchSizeFromUserInput(tempBatchSize)
+            focusManager.clearFocus()
+        }),
+        label = {
+            if (!batchSize.toString().contentEquals(tempBatchSize)) {
+                Text(
+                    text = "Value not saved, click Done (✓) on keyboard",
+                    color = Color.Red
+                )
+            } else {
+                Text("Update Memory Batch Size")
+            }
+        },
+        enabled = !isCurrentlyConverting,
+        singleLine = true
+    )
+}
+
 @Preview(showBackground = true)
 @Composable
 fun ConfigurationPagePreview() {
     CbzConverterTheme {
         ConfigurationPage(
             maxNumberOfPages = 100,
+            batchSize = 300,
             viewModel = MainViewModel(contextHelper = ContextHelper(ComponentActivity())),
             isCurrentlyConverting = false,
             overrideSortOrderToUseOffset = false,
@@ -290,6 +349,19 @@ fun MaxNumberOfPagesConfigSegmentPreview() {
     CbzConverterTheme {
         MaxNumberOfPagesConfigSegment(
             maxNumberOfPages = 100,
+            viewModel = MainViewModel(contextHelper = ContextHelper(ComponentActivity())),
+            focusManager = LocalFocusManager.current,
+            isCurrentlyConverting = false
+        )
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+fun BatchSizeConfigSegmentPreview() {
+    CbzConverterTheme {
+        BatchSizeConfigSegment(
+            batchSize = 150,
             viewModel = MainViewModel(contextHelper = ContextHelper(ComponentActivity())),
             focusManager = LocalFocusManager.current,
             isCurrentlyConverting = false
