@@ -20,6 +20,9 @@ import java.util.zip.ZipFile
 import java.util.zip.ZipOutputStream
 import kotlin.math.ceil
 import kotlin.streams.asStream
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import java.io.FileOutputStream
 
 private val logger = Logger.getLogger("com.puchunguita.cbzconverter.ConversionFunction")
 private val COMBINED_TEMP_CBZ_FILE = "combined_temp.cbz"
@@ -289,7 +292,7 @@ private fun createPdfFromImageList(
                 setMarginForDocument(document)
                 for ((currentImageIndex, imageFile) in imagesToProcess.withIndex()) {
                     subStepStatusAction(messageFormat(currentImageIndex + 1))
-                    extractImageAndAddToPDFDocument(zipFile, imageFile, document, contextHelper)
+                    extractImageAndAddToPDFDocument(zipFile, imageFile, document, contextHelper, subStepStatusAction)
                 }
                 pdfDoc.writer.flush()
                 writer.flush()
@@ -475,11 +478,35 @@ private fun setMarginForDocument(document: Document){
     document.setMargins(15f, 10f, 15f, 10f)  // Top, Right, Bottom, Left
 }
 
+private fun convertWebpToJpeg(inputFile: File): File {
+    try {
+        // Decode WebP using Android's BitmapFactory
+        val options = BitmapFactory.Options()
+        val bitmap = BitmapFactory.decodeFile(inputFile.absolutePath, options)
+            ?: throw IOException("Failed to decode WebP image")
+
+        // Create output JPEG file
+        val outputFile = File(inputFile.parentFile, "temp_converted.jpg")
+        val outputStream = FileOutputStream(outputFile)
+        
+        // Compress to JPEG with 90% quality
+        bitmap.compress(Bitmap.CompressFormat.JPEG, 90, outputStream)
+        outputStream.close()
+        bitmap.recycle()
+        
+        return outputFile
+    } catch (e: Exception) {
+        logger.warning("Failed to convert WebP to JPEG: ${e.message}")
+        throw e
+    }
+}
+
 private fun extractImageAndAddToPDFDocument(
     zipFile: ZipFile,
     zipFileEntry: ZipEntry,
     document: Document,
-    contextHelper: ContextHelper
+    contextHelper: ContextHelper,
+    subStepStatusAction: (String) -> Unit
 ) {
     try {
         // Create temp file to avoid large memory usage
@@ -490,7 +517,16 @@ private fun extractImageAndAddToPDFDocument(
             }
         }
 
-        val pdfImage = Image(ImageDataFactory.create(tempFile.absolutePath))
+        // Check if it's a WebP file and convert if necessary
+        val imageFileToProcess = if (zipFileEntry.name.lowercase().endsWith(".webp")) {
+            subStepStatusAction("Converting WebP image: ${zipFileEntry.name}")
+            logger.info("Converting WebP image: ${zipFileEntry.name}")
+            convertWebpToJpeg(tempFile)
+        } else {
+            tempFile
+        }
+
+        val pdfImage = Image(ImageDataFactory.create(imageFileToProcess.absolutePath))
 
         // Adjust the PDF page size to match the image dimensions
         val pdfPageSize = PageSize(
@@ -502,8 +538,19 @@ private fun extractImageAndAddToPDFDocument(
         // Add the scaled image to the PDF document
         document.add(pdfImage)
         document.flush()
+        
+        // Clean up temporary JPEG, which was converted from WebP file
+        if (imageFileToProcess != tempFile) {
+            imageFileToProcess.delete()
+        }
         tempFile.delete()
     } catch (e: Exception) {
         logger.warning("ImageExtraction $e Error processing file ${zipFileEntry.name}")
+        // Log more details about the error
+        logger.warning("Error processing file ${zipFileEntry.name}: ${e.message}")
+        logger.warning("Error details: ${e::class.simpleName} - ${e.message}")
+        e.cause?.let { cause ->
+            logger.warning("Caused by: ${cause::class.simpleName} - ${cause.message}")
+        }
     }
 }
