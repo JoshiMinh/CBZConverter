@@ -1,15 +1,10 @@
-# CBZ Converter
+<h1 align="center">CBZConverter</h1>
 
-## Overview
-The CBZ Converter app was created to fill in the gap of converting `.CBZ` files into `.PDF` files, directly on your Android Phone.
+An App Created To Convert `.CBZ` Files Into `.PDF` Or `.EPUB` Files, Directly On Your Android Device.
 
-## Capabilities
-- Single CBZ to PDF Conversion: Convert a single `.CBZ` file into a `.PDF` file.
-- Batch Conversion: Convert multiple `.CBZ` files into separate `.PDF` files (Multi-Select CBZ Files).
-- Sorting Options: Sort files based on their offset within the `.CBZ` file or by file name (Default is by file name in Ascending order).
-- Page Limits: Set a maximum number of pages for the PDF and automatically split the PDF into multiple parts if necessary.
-- Memory Management: Configure batch size to control memory usage during conversion. Lower values use less memory but may be slower, higher values are faster but use more memory.
-- File Name Override: Override the default name of the exported PDF (Default is the file name of the `.CBZ` file).
-- Output Directory Override: Specify an output directory for the exported PDF (Default is the `Download` directory).
-- Merging CBZ Files: Merge all selected CBZ files into a single PDF while preserving the flexibility of all previously mentioned options. 
-  - Can still apply additional configuration such as: sorting, page limits, name overrides, and directory selection to the merged PDF.
+## Functionalities
+- Single Or Batch Conversion: Convert A Single Or Multiple `.CBZ` Files At Once.  
+- Merge CBZ Files Into One Convert  
+- Sorting Options: Sort Files Based On Their Offset Within The `.CBZ` File Or By File Name (Default In Ascending Order).  
+- Page Limits: Set A Maximum Number Of Pages For The PDF And Automatically Split The PDF Into Multiple Parts.  
+... And More.
