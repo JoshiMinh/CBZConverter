@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardActions
@@ -37,7 +38,7 @@ import com.joshiminh.cbzconverter.backend.MainViewModel
 import com.joshiminh.cbzconverter.theme.CbzConverterTheme
 
 @Composable
-fun ConfigurationPage(
+fun ConfigurationsSegment(
     maxNumberOfPages: Int,
     batchSize: Int,
     viewModel: MainViewModel,
@@ -48,18 +49,19 @@ fun ConfigurationPage(
     selectedFilesUri: List<Uri>,
     overrideOutputDirectoryUri: Uri?,
     activity: ComponentActivity,
-    directoryPickerLauncher: ManagedActivityResultLauncher<Uri?, Uri?>
+    directoryPickerLauncher: ManagedActivityResultLauncher<Uri?, Uri?>,
 ) {
     val scrollState = rememberScrollState()
-    
+
     Column(
-        verticalArrangement = Arrangement.Center,
+        verticalArrangement = Arrangement.Top,
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
             .fillMaxWidth()
             .verticalScroll(scrollState)
+            .padding(16.dp)
     ) {
-        Text(text = "Configurations (Swipe Up to see all options)")
+        Text(text = "Configurations")
 
         Spacer(modifier = Modifier.height(16.dp))
         Divider()
@@ -71,7 +73,7 @@ fun ConfigurationPage(
             maxNumberOfPages,
             viewModel,
             focusManager,
-            isCurrentlyConverting
+            isCurrentlyConverting,
         )
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -82,7 +84,7 @@ fun ConfigurationPage(
             batchSize,
             viewModel,
             focusManager,
-            isCurrentlyConverting
+            isCurrentlyConverting,
         )
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -91,11 +93,13 @@ fun ConfigurationPage(
 
         SortOrderOverrideConfigSegment(overrideSortOrderToUseOffset, viewModel)
 
+        Spacer(modifier = Modifier.height(16.dp))
         Divider()
         Spacer(modifier = Modifier.height(16.dp))
 
         MergeFilesOverrideConfigSegment(overrideMergeFiles, viewModel)
 
+        Spacer(modifier = Modifier.height(16.dp))
         Divider()
         Spacer(modifier = Modifier.height(16.dp))
 
@@ -104,7 +108,7 @@ fun ConfigurationPage(
             viewModel,
             focusManager,
             isCurrentlyConverting,
-            selectedFilesUri
+            selectedFilesUri,
         )
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -116,11 +120,8 @@ fun ConfigurationPage(
             viewModel,
             activity,
             directoryPickerLauncher,
-            isCurrentlyConverting
+            isCurrentlyConverting,
         )
-        Spacer(modifier = Modifier.height(16.dp))
-        Divider()
-        Spacer(modifier = Modifier.height(48.dp))
     }
 }
 
@@ -130,25 +131,32 @@ private fun OutputDirectoryOverrideConfigSegment(
     viewModel: MainViewModel,
     activity: ComponentActivity,
     directoryPickerLauncher: ManagedActivityResultLauncher<Uri?, Uri?>,
-    isCurrentlyConverting: Boolean
+    isCurrentlyConverting: Boolean,
 ) {
-    Text(
-        if (overrideOutputDirectoryUri != null) {
-            "Current Output File Path: $overrideOutputDirectoryUri"
-        } else {
-            "No override output directory selected"
-        }
-    )
-    Spacer(modifier = Modifier.height(16.dp))
-
-    Button(
-        onClick = {
-            // todo look into why you cannot choose any directory, even though you have full access to storage
-            viewModel.checkPermissionAndSelectDirectoryAction(activity, directoryPickerLauncher)
-        },
-        enabled = !isCurrentlyConverting
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text(text = "Select & Override Output File Path")
+        Text(
+            if (overrideOutputDirectoryUri != null) {
+                "Current Output File Path: $overrideOutputDirectoryUri"
+            } else {
+                "No override output directory selected"
+            }
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Button(
+            onClick = {
+                // todo look into why you cannot choose any directory, even though you have full access to storage
+                viewModel.checkPermissionAndSelectDirectoryAction(activity, directoryPickerLauncher)
+            },
+            enabled = !isCurrentlyConverting
+        ) {
+            Text(text = "Select & Override Output File Path")
+        }
     }
 }
 
@@ -158,68 +166,89 @@ private fun FileNameOverrideConfigSegment(
     viewModel: MainViewModel,
     focusManager: FocusManager,
     isCurrentlyConverting: Boolean,
-    selectedFilesUri: List<Uri>
+    selectedFilesUri: List<Uri>,
 ) {
-    Text(text = "Current File Name: $overrideFileName")
-    Spacer(modifier = Modifier.height(16.dp))
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(text = "Current File Name: $overrideFileName")
+        Spacer(modifier = Modifier.height(16.dp))
 
-    var tempFileNameOverride by remember { mutableStateOf(MainViewModel.EMPTY_STRING) }
+        var tempFileNameOverride by remember { mutableStateOf(MainViewModel.EMPTY_STRING) }
 
-    TextField(
-        value = tempFileNameOverride,
-        onValueChange = { tempFileNameOverride = it },
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
-        keyboardActions = KeyboardActions(onDone = {
-            viewModel.updateOverrideFileNameFromUserInput(tempFileNameOverride)
-            focusManager.clearFocus()
-        }),
-        label = {
-            if (!overrideFileName.contentEquals(tempFileNameOverride) && tempFileNameOverride.isNotBlank()) {
-                Text(
-                    text = "Value not saved, click Done (✓) on keyboard",
-                    color = Color.Red
-                )
-            } else {
-                Text("Override default file name (Exclude Extension)")
-            }
-        },
-        enabled = !isCurrentlyConverting && selectedFilesUri.isNotEmpty(),
-        singleLine = true
-    )
+        TextField(
+            value = tempFileNameOverride,
+            onValueChange = { tempFileNameOverride = it },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
+            keyboardActions = KeyboardActions(onDone = {
+                viewModel.updateOverrideFileNameFromUserInput(tempFileNameOverride)
+                focusManager.clearFocus()
+            }),
+            label = {
+                if (!overrideFileName.contentEquals(tempFileNameOverride) && tempFileNameOverride.isNotBlank()) {
+                    Text(
+                        text = "Value not saved, click Done (✓) on keyboard",
+                        color = Color.Red
+                    )
+                } else {
+                    Text("Override default file name (Exclude Extension)")
+                }
+            },
+            enabled = !isCurrentlyConverting && selectedFilesUri.isNotEmpty(),
+            singleLine = true
+        )
+    }
 }
 
 @Composable
 private fun SortOrderOverrideConfigSegment(
     overrideSortOrderToUseOffset: Boolean,
-    viewModel: MainViewModel
+    viewModel: MainViewModel,
 ) {
-    Text(
-        text = "Default sort order uses file name (ASC)\n" +
-                "Override Sort Order to Use Offset: $overrideSortOrderToUseOffset"
-    )
-    Checkbox(
-        checked = overrideSortOrderToUseOffset,
-        onCheckedChange = viewModel::toggleOverrideSortOrderToUseOffset
-    )
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            text = "Default sort order uses file name (ASC)\n" +
+                    "Override Sort Order to Use Offset: $overrideSortOrderToUseOffset"
+        )
+        Checkbox(
+            checked = overrideSortOrderToUseOffset,
+            onCheckedChange = viewModel::toggleOverrideSortOrderToUseOffset
+        )
+    }
 }
 
 @Composable
 private fun MergeFilesOverrideConfigSegment(
     overrideMergeFiles: Boolean,
-    viewModel: MainViewModel
+    viewModel: MainViewModel,
 ) {
-    Text(
-        text = "Default Behavior:\nApplies logic to each individual CBZ file.\n" +
-                "Merge Files Override, mergers all files into one file.\n" +
-                "Then applies additional configuration to that one file.\n"+
-                "Note: When using this option the first file selected will be used as filename,\n" +
-                "Unless an override file name is provide.\n"+
-                "Merge Files Override: $overrideMergeFiles"
-    )
-    Checkbox(
-        checked = overrideMergeFiles,
-        onCheckedChange = viewModel::toggleMergeFilesOverride
-    )
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            text = "Default Behavior:\nApplies logic to each individual CBZ file.\n" +
+                    "Merge Files Override, mergers all files into one file.\n" +
+                    "Then applies additional configuration to that one file.\n"+
+                    "Note: When using this option the first file selected will be used as filename,\n" +
+                    "Unless an override file name is provide.\n"+
+                    "Merge Files Override: $overrideMergeFiles"
+        )
+        Checkbox(
+            checked = overrideMergeFiles,
+            onCheckedChange = viewModel::toggleMergeFilesOverride
+        )
+    }
 }
 
 @Composable
@@ -227,32 +256,39 @@ private fun MaxNumberOfPagesConfigSegment(
     maxNumberOfPages: Int,
     viewModel: MainViewModel,
     focusManager: FocusManager,
-    isCurrentlyConverting: Boolean
+    isCurrentlyConverting: Boolean,
 ) {
-    Text(text = "Max Number of Pages per PDF: $maxNumberOfPages")
-    Spacer(modifier = Modifier.height(16.dp))
-    var tempMaxNumberOfPages by remember { mutableStateOf(maxNumberOfPages.toString()) }
-    TextField(
-        value = tempMaxNumberOfPages,
-        onValueChange = { tempMaxNumberOfPages = it },
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-        keyboardActions = KeyboardActions(onDone = {
-            viewModel.updateMaxNumberOfPagesSizeFromUserInput(tempMaxNumberOfPages)
-            focusManager.clearFocus()
-        }),
-        label = {
-            if (!maxNumberOfPages.toString().contentEquals(tempMaxNumberOfPages)) {
-                Text(
-                    text = "Value not saved, click Done (✓) on keyboard",
-                    color = Color.Red
-                )
-            } else {
-                Text("Update Max Number of Pages per PDF")
-            }
-        },
-        enabled = !isCurrentlyConverting,
-        singleLine = true
-    )
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(text = "Max Number of Pages per PDF: $maxNumberOfPages")
+        Spacer(modifier = Modifier.height(16.dp))
+        var tempMaxNumberOfPages by remember { mutableStateOf(maxNumberOfPages.toString()) }
+        TextField(
+            value = tempMaxNumberOfPages,
+            onValueChange = { tempMaxNumberOfPages = it },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            keyboardActions = KeyboardActions(onDone = {
+                viewModel.updateMaxNumberOfPagesSizeFromUserInput(tempMaxNumberOfPages)
+                focusManager.clearFocus()
+            }),
+            label = {
+                if (!maxNumberOfPages.toString().contentEquals(tempMaxNumberOfPages)) {
+                    Text(
+                        text = "Value not saved, click Done (✓) on keyboard",
+                        color = Color.Red
+                    )
+                } else {
+                    Text("Update Max Number of Pages per PDF")
+                }
+            },
+            enabled = !isCurrentlyConverting,
+            singleLine = true
+        )
+    }
 }
 
 @Composable
@@ -260,46 +296,53 @@ private fun BatchSizeConfigSegment(
     batchSize: Int,
     viewModel: MainViewModel,
     focusManager: FocusManager,
-    isCurrentlyConverting: Boolean
+    isCurrentlyConverting: Boolean,
 ) {
-    Text(
-        text = "Memory Batch Size: $batchSize\n" +
-                "Controls memory usage by processing images in memory batches.\n" +
-                "Lower values use less memory but may be slower.\n" +
-                "Higher values are faster but use more memory.\n" +
-                "Note: Does not affect end result, only memory usage.\n" +
-                "Note: If you are having issues with memory running out when converting, try lowering this value. Suggestion: 20-50 pages under the number where it failed to convert. (e.g. failed when converting page \"203\" change value to \"150\")"
-    )
-    Spacer(modifier = Modifier.height(16.dp))
-    var tempBatchSize by remember { mutableStateOf(batchSize.toString()) }
-    TextField(
-        value = tempBatchSize,
-        onValueChange = { tempBatchSize = it },
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-        keyboardActions = KeyboardActions(onDone = {
-            viewModel.updateBatchSizeFromUserInput(tempBatchSize)
-            focusManager.clearFocus()
-        }),
-        label = {
-            if (!batchSize.toString().contentEquals(tempBatchSize)) {
-                Text(
-                    text = "Value not saved, click Done (✓) on keyboard",
-                    color = Color.Red
-                )
-            } else {
-                Text("Update Memory Batch Size")
-            }
-        },
-        enabled = !isCurrentlyConverting,
-        singleLine = true
-    )
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            text = "Memory Batch Size: $batchSize\n" +
+                    "Controls memory usage by processing images in memory batches.\n" +
+                    "Lower values use less memory but may be slower.\n" +
+                    "Higher values are faster but use more memory.\n" +
+                    "Note: Does not affect end result, only memory usage.\n" +
+                    "Note: If you are having issues with memory running out when converting, try lowering this value. Suggestion: 20-50 pages under the number where it failed to convert. (e.g. failed when converting page \"203\" change value to \"150\")"
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        var tempBatchSize by remember { mutableStateOf(batchSize.toString()) }
+        TextField(
+            value = tempBatchSize,
+            onValueChange = { tempBatchSize = it },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            keyboardActions = KeyboardActions(onDone = {
+                viewModel.updateBatchSizeFromUserInput(tempBatchSize)
+                focusManager.clearFocus()
+            }),
+            label = {
+                if (!batchSize.toString().contentEquals(tempBatchSize)) {
+                    Text(
+                        text = "Value not saved, click Done (✓) on keyboard",
+                        color = Color.Red
+                    )
+                } else {
+                    Text("Update Memory Batch Size")
+                }
+            },
+            enabled = !isCurrentlyConverting,
+            singleLine = true
+        )
+    }
 }
 
 @Preview(showBackground = true)
 @Composable
-fun ConfigurationPagePreview() {
+fun ConfigurationsSegmentPreview() {
     CbzConverterTheme {
-        ConfigurationPage(
+        ConfigurationsSegment(
             maxNumberOfPages = 100,
             batchSize = 300,
             viewModel = MainViewModel(contextHelper = ContextHelper(ComponentActivity())),
@@ -310,10 +353,7 @@ fun ConfigurationPagePreview() {
             selectedFilesUri = listOf(),
             overrideOutputDirectoryUri = null,
             activity = ComponentActivity(),
-            directoryPickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri: Uri? ->
-                uri?.let {
-                }
-            }
+            directoryPickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri: Uri? -> }
         )
     }
 }

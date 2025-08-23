@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -37,12 +38,20 @@ fun CbzConverterPage(
     isCurrentlyConverting: Boolean,
     selectedFilesUri: List<Uri>,
     currentTaskStatus: String,
-    currentSubTaskStatus: String
+    currentSubTaskStatus: String,
+    maxNumberOfPages: Int,
+    batchSize: Int,
+    overrideSortOrderToUseOffset: Boolean,
+    overrideMergeFiles: Boolean,
+    overrideFileName: String,
+    overrideOutputDirectoryUri: Uri?,
+    directoryPickerLauncher: ManagedActivityResultLauncher<Uri?, Uri?>,
 ) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(16.dp),
+            .padding(16.dp)
+            .verticalScroll(rememberScrollState()),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Spacer(modifier = Modifier.height(16.dp))
@@ -53,7 +62,25 @@ fun CbzConverterPage(
             activity,
             filePickerLauncher,
             isCurrentlyConverting,
-            selectedFilesUri
+            selectedFilesUri,
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+        Divider()
+        Spacer(modifier = Modifier.height(16.dp))
+
+        ConfigurationsSegment(
+            maxNumberOfPages,
+            batchSize,
+            viewModel,
+            isCurrentlyConverting,
+            overrideSortOrderToUseOffset,
+            overrideMergeFiles,
+            overrideFileName,
+            selectedFilesUri,
+            overrideOutputDirectoryUri,
+            activity,
+            directoryPickerLauncher,
         )
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -68,16 +95,25 @@ fun CbzConverterPage(
 }
 
 @Composable
-private fun TasksStatusSegment(currentTaskStatus: String, currentSubTaskStatus: String) {
+private fun TasksStatusSegment(
+    currentTaskStatus: String,
+    currentSubTaskStatus: String,
+) {
     Column(
-        Modifier.height(250.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(8.dp)
+            .height(250.dp),
         verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text(text = "Current Task Status (Scrollable):", fontWeight = FontWeight.SemiBold)
+        Text(
+            text = "Current Task Status (Scrollable):",
+            fontWeight = FontWeight.SemiBold,
+        )
         LazyColumn(
             Modifier.height(100.dp),
-            verticalArrangement = Arrangement.Center
+            verticalArrangement = Arrangement.Center,
         ) {
             items(currentTaskStatus.lines()) { line ->
                 Text(text = line)
@@ -86,10 +122,13 @@ private fun TasksStatusSegment(currentTaskStatus: String, currentSubTaskStatus: 
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        Text(text = "Current Sub-Task Status (Scrollable):", fontWeight = FontWeight.SemiBold)
+        Text(
+            text = "Current Sub-Task Status (Scrollable):",
+            fontWeight = FontWeight.SemiBold,
+        )
         LazyColumn(
             Modifier.height(130.dp),
-            verticalArrangement = Arrangement.Center
+            verticalArrangement = Arrangement.Center,
         ) {
             items(currentSubTaskStatus.lines()) { line ->
                 Text(text = line)
@@ -105,12 +144,15 @@ private fun FileConversionSegment(
     activity: ComponentActivity,
     filePickerLauncher: ManagedActivityResultLauncher<Array<String>, List<Uri>>,
     isCurrentlyConverting: Boolean,
-    selectedFilesUri: List<Uri>
+    selectedFilesUri: List<Uri>,
 ) {
     Column(
-        Modifier.height(230.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(8.dp)
+            .height(230.dp),
         verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(text = "File to Convert (Scrollable):", fontWeight = FontWeight.SemiBold)
 
@@ -123,12 +165,11 @@ private fun FileConversionSegment(
         }
         Spacer(modifier = Modifier.height(16.dp))
 
-
         Button(
             onClick = {
                 viewModel.checkPermissionAndSelectFileAction(activity, filePickerLauncher)
             },
-            enabled = !isCurrentlyConverting
+            enabled = !isCurrentlyConverting,
         ) {
             Text(text = "Select CBZ File")
         }
@@ -136,11 +177,9 @@ private fun FileConversionSegment(
 
         Button(
             onClick = {
-                selectedFilesUri.let {
-                    viewModel.convertToPDF(it)
-                }
+                selectedFilesUri.let { viewModel.convertToPDF(it) }
             },
-            enabled = selectedFilesUri.isNotEmpty() && !isCurrentlyConverting
+            enabled = selectedFilesUri.isNotEmpty() && !isCurrentlyConverting,
         ) {
             Text(text = "Convert to PDF")
         }
@@ -162,7 +201,14 @@ fun CbzConverterPagePreview() {
             isCurrentlyConverting = false,
             selectedFilesUri = listOf(),
             currentTaskStatus = "",
-            currentSubTaskStatus = ""
+            currentSubTaskStatus = "",
+            maxNumberOfPages = 100,
+            batchSize = 300,
+            overrideSortOrderToUseOffset = false,
+            overrideMergeFiles = false,
+            overrideFileName = "test",
+            overrideOutputDirectoryUri = null,
+            directoryPickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri: Uri? -> }
         )
     }
 }
