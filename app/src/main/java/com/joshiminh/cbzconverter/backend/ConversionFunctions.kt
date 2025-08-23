@@ -1,4 +1,4 @@
-package com.puchunguita.cbzconverter
+package com.joshiminh.cbzconverter.backend
 
 import android.net.Uri
 import android.os.Environment

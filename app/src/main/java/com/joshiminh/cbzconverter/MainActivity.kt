@@ -1,4 +1,4 @@
-package com.puchunguita.cbzconverter
+package com.joshiminh.cbzconverter
 
 import android.net.Uri
 import android.os.Bundle
@@ -22,9 +22,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import com.puchunguita.cbzconverter.ui.components.CbzConverterPage
-import com.puchunguita.cbzconverter.ui.components.ConfigurationPage
-import com.puchunguita.cbzconverter.ui.theme.CbzConverterTheme
+import com.joshiminh.cbzconverter.backend.ContextHelper
+import com.joshiminh.cbzconverter.backend.MainViewModel
+import com.joshiminh.cbzconverter.ui.normal.CbzConverterPage
+import com.joshiminh.cbzconverter.ui.normal.ConfigurationPage
+import com.joshiminh.cbzconverter.theme.CbzConverterTheme
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {

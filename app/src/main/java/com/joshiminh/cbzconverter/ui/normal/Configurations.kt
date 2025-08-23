@@ -1,4 +1,4 @@
-package com.puchunguita.cbzconverter.ui.components
+package com.joshiminh.cbzconverter.ui.normal
 
 import android.net.Uri
 import androidx.activity.ComponentActivity
@@ -32,9 +32,9 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import com.puchunguita.cbzconverter.ContextHelper
-import com.puchunguita.cbzconverter.MainViewModel
-import com.puchunguita.cbzconverter.ui.theme.CbzConverterTheme
+import com.joshiminh.cbzconverter.backend.ContextHelper
+import com.joshiminh.cbzconverter.backend.MainViewModel
+import com.joshiminh.cbzconverter.theme.CbzConverterTheme
 
 @Composable
 fun ConfigurationPage(

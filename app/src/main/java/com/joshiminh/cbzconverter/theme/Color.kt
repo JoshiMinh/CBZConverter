@@ -1,4 +1,4 @@
-package com.puchunguita.cbzconverter.ui.theme
+package com.joshiminh.cbzconverter.theme
 
 import androidx.compose.ui.graphics.Color
 

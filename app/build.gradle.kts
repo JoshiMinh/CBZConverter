@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace = "com.puchunguita.cbzconverter"
+    namespace = "com.joshiminh.cbzconverter"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.puchunguita.cbzconverter"
+        applicationId = "com.joshiminh.cbzconverter"
         minSdk = 24
         targetSdk = 35
         versionCode = 1
@@ -51,9 +51,8 @@ android {
 }
 
 dependencies {
-
-    implementation ("com.anggrayudi:storage:2.0.0")
-    implementation("com.itextpdf:itext-core:9.0.0")
+    implementation (libs.storage)
+    implementation(libs.itext.core)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
@@ -63,8 +62,8 @@ dependencies {
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
     testImplementation(libs.junit)
-    testImplementation("org.mockito:mockito-core:5.3.1")
-    testImplementation("org.mockito:mockito-inline:5.2.0")
+    testImplementation(libs.mockito.core)
+    testImplementation(libs.mockito.inline)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
