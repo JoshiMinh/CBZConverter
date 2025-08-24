@@ -32,6 +32,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.joshiminh.cbzconverter.backend.ContextHelper
 import com.joshiminh.cbzconverter.backend.MainViewModel
@@ -52,7 +53,6 @@ class MainActivity : ComponentActivity() {
                 when (selectedMode) {
                     "normal" ->
                         NormalModeScreen(
-                            activity = this,
                             onBack = {
                                 selectedMode = null
                                 prefs.edit().remove("selected_mode").apply()
@@ -107,8 +107,9 @@ fun ModeSelectionScreen(onNormal: () -> Unit, onMihon: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun NormalModeScreen(activity: ComponentActivity, onBack: () -> Unit) {
-    val viewModel = remember { MainViewModel(ContextHelper(activity)) }
+fun NormalModeScreen(onBack: () -> Unit) {
+    val activity = LocalContext.current as ComponentActivity
+    val viewModel = remember(activity) { MainViewModel(ContextHelper(activity)) }
     val isCurrentlyConverting by viewModel.isCurrentlyConverting.collectAsState()
     val currentTaskStatus by viewModel.currentTaskStatus.collectAsState()
     val currentSubTaskStatus by viewModel.currentSubTaskStatus.collectAsState()
@@ -146,7 +147,6 @@ fun NormalModeScreen(activity: ComponentActivity, onBack: () -> Unit) {
             CbzConverterPage(
                 selectedFileName,
                 viewModel,
-                activity,
                 filePickerLauncher,
                 isCurrentlyConverting,
                 selectedFilesUri,
