@@ -6,73 +6,73 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.ManagedActivityResultLauncher
 import androidx.lifecycle.ViewModel
-import kotlinx.coroutines.CoroutineScope
+import androidx.lifecycle.viewModelScope
+import java.io.File
+import java.util.logging.Level
+import java.util.logging.Logger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.File
-import java.lang.Boolean.FALSE
-import java.lang.Boolean.TRUE
-import java.util.logging.Level
-import java.util.logging.Logger
-import java.util.stream.Collectors
 
+/**
+ * App state holder and conversion orchestrator.
+ *
+ * Exposes UI state via StateFlows and provides actions for:
+ * - Selecting files/directories (delegates permission checks to PermissionsManager)
+ * - Updating configuration overrides
+ * - Converting CBZ -> PDF (on a background dispatcher)
+ */
 class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
 
     companion object {
         private const val NOTHING_PROCESSING = "Nothing Processing"
         private const val NO_FILE_SELECTED = "No file selected"
         const val EMPTY_STRING = ""
-        private const val DEFAULT_MAX_NUMBER_OF_PAGES = 10000
+        private const val DEFAULT_MAX_NUMBER_OF_PAGES = 10_000
         private const val DEFAULT_BATCH_SIZE = 300
     }
 
     private val logger = Logger.getLogger(MainViewModel::class.java.name)
 
-    private val _isCurrentlyConverting: MutableStateFlow<Boolean> = MutableStateFlow(false)
+    // ---------------------------- UI State ----------------------------
+
+    private val _isCurrentlyConverting = MutableStateFlow(false)
     val isCurrentlyConverting = _isCurrentlyConverting.asStateFlow()
 
-    private val _currentTaskStatus: MutableStateFlow<String> = MutableStateFlow(NOTHING_PROCESSING)
+    private val _currentTaskStatus = MutableStateFlow(NOTHING_PROCESSING)
     val currentTaskStatus = _currentTaskStatus.asStateFlow()
 
-    private val _currentSubTaskStatus: MutableStateFlow<String> = MutableStateFlow(NOTHING_PROCESSING)
+    private val _currentSubTaskStatus = MutableStateFlow(NOTHING_PROCESSING)
     val currentSubTaskStatus = _currentSubTaskStatus.asStateFlow()
 
-    private val _maxNumberOfPages: MutableStateFlow<Int> = MutableStateFlow(DEFAULT_MAX_NUMBER_OF_PAGES)
+    private val _maxNumberOfPages = MutableStateFlow(DEFAULT_MAX_NUMBER_OF_PAGES)
     val maxNumberOfPages = _maxNumberOfPages.asStateFlow()
 
-    private val _batchSize: MutableStateFlow<Int> = MutableStateFlow(DEFAULT_BATCH_SIZE)
+    private val _batchSize = MutableStateFlow(DEFAULT_BATCH_SIZE)
     val batchSize = _batchSize.asStateFlow()
 
-    private val _overrideSortOrderToUseOffset: MutableStateFlow<Boolean> = MutableStateFlow(FALSE)
+    private val _overrideSortOrderToUseOffset = MutableStateFlow(false)
     val overrideSortOrderToUseOffset = _overrideSortOrderToUseOffset.asStateFlow()
 
-    private val _overrideMergeFiles: MutableStateFlow<Boolean> = MutableStateFlow(FALSE)
+    private val _overrideMergeFiles = MutableStateFlow(false)
     val overrideMergeFiles = _overrideMergeFiles.asStateFlow()
 
-    private val _selectedFileName: MutableStateFlow<String> = MutableStateFlow(NO_FILE_SELECTED)
+    private val _selectedFileName = MutableStateFlow(NO_FILE_SELECTED)
     val selectedFileName = _selectedFileName.asStateFlow()
 
-    private val _selectedFileUri: MutableStateFlow<List<Uri>> = MutableStateFlow(emptyList())
+    private val _selectedFileUri = MutableStateFlow<List<Uri>>(emptyList())
     val selectedFileUri = _selectedFileUri.asStateFlow()
 
-    private val _overrideFileName: MutableStateFlow<String> = MutableStateFlow(EMPTY_STRING)
+    private val _overrideFileName = MutableStateFlow(EMPTY_STRING)
     val overrideFileName = _overrideFileName.asStateFlow()
 
-    private val _overrideOutputDirectoryUri: MutableStateFlow<Uri?> = MutableStateFlow(null)
+    private val _overrideOutputDirectoryUri = MutableStateFlow<Uri?>(null)
     val overrideOutputDirectoryUri = _overrideOutputDirectoryUri.asStateFlow()
 
-    private fun convertListOfCbzFileNameToPdfFileName(fileNames: List<String>) : List<String> {
-        return fileNames.stream().map{ it.replace(".cbz", ".pdf") }.collect(Collectors.toList())
-    }
-
-    private fun toggleIsCurrentlyConverting(forceUpdate: Boolean): Boolean {
-        _isCurrentlyConverting.update { forceUpdate }
-        return _isCurrentlyConverting.value
-    }
+    // --------------------------- Mutators ----------------------------
 
     fun toggleOverrideSortOrderToUseOffset(newValue: Boolean) {
         _overrideSortOrderToUseOffset.update { newValue }
@@ -82,219 +82,128 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
         _overrideMergeFiles.update { newValue }
     }
 
-    private suspend fun updateConversionState(forceUpdate: Boolean) {
-        withContext(Dispatchers.Main) {
-            logger.info(
-                if (toggleIsCurrentlyConverting(forceUpdate)) "Conversion started" else "Conversion ended"
-            )
-        }
-    }
-
-    private suspend fun updateCurrentTaskStatusMessageSuspend(message: String, level: Level = Level.INFO) {
-        withContext(Dispatchers.Main) {
-            updateCurrentTaskStatusMessageByAppending(message)
-            logger.log(level, message)
-        }
-    }
-
-    private fun updateCurrentTaskStatusMessage(message: String) {
-            _currentTaskStatus.update { message }
-    }
-
-    private fun updateCurrentTaskStatusMessageByAppending(message: String) {
-        _currentTaskStatus.update { currentMessage -> message.plus("\n$currentMessage") }
-    }
-
-    private fun updateCurrentSubTaskStatusMessage(message: String) {
-        _currentSubTaskStatus.update { message }
-    }
-
-    private suspend fun updateCurrentSubTaskStatusMessageSuspendByAppending(message: String) {
-        withContext(Dispatchers.Main) {
-            _currentSubTaskStatus.update { currentMessage -> message.plus("\n$currentMessage") }
-            logger.info(message)
-        }
-    }
-
-    private fun updateMaxNumberOfPages(maxNumberOfPages: Int) {
-        _maxNumberOfPages.update { maxNumberOfPages }
-    }
-
-    private fun updateBatchSize(batchSize: Int) {
-        _batchSize.update { batchSize }
-    }
-
     fun updateMaxNumberOfPagesSizeFromUserInput(maxNumberOfPages: String) {
-        try {
-            updateMaxNumberOfPages(maxNumberOfPages.trim().toInt())
-            updateCurrentTaskStatusMessageByAppending("Updated maxNumberOfPages size: $maxNumberOfPages")
-        } catch (e: Exception) {
-            updateCurrentTaskStatusMessageByAppending("Invalid maxNumberOfPages size: $maxNumberOfPages reverting to default value")
-            updateMaxNumberOfPages(DEFAULT_MAX_NUMBER_OF_PAGES)
+        val parsed = maxNumberOfPages.trim().toIntOrNull()
+        if (parsed != null && parsed > 0) {
+            _maxNumberOfPages.update { parsed }
+            appendTask("Updated maxNumberOfPages size: $parsed")
+        } else {
+            appendTask("Invalid maxNumberOfPages size: $maxNumberOfPages — reverting to default")
+            _maxNumberOfPages.update { DEFAULT_MAX_NUMBER_OF_PAGES }
         }
     }
 
     fun updateBatchSizeFromUserInput(batchSize: String) {
-        try {
-            val newBatchSize = batchSize.trim().toInt()
-            if (newBatchSize <= 0) throw Exception("Batch size must be positive")
-            updateBatchSize(newBatchSize)
-            updateCurrentTaskStatusMessageByAppending("Updated batch size: $newBatchSize")
-        } catch (e: Exception) {
-            updateCurrentTaskStatusMessageByAppending("Invalid batch size: $batchSize reverting to default value")
-            updateBatchSize(DEFAULT_BATCH_SIZE)
+        val parsed = batchSize.trim().toIntOrNull()
+        if (parsed != null && parsed > 0) {
+            _batchSize.update { parsed }
+            appendTask("Updated batch size: $parsed")
+        } else {
+            appendTask("Invalid batch size: $batchSize — reverting to default")
+            _batchSize.update { DEFAULT_BATCH_SIZE }
         }
-    }
-
-    private fun updateOverrideFileName(newOverrideFileName: String) {
-        _overrideFileName.update { newOverrideFileName }
     }
 
     fun updateOverrideFileNameFromUserInput(newOverrideFileName: String) {
-        try {
-            if (newOverrideFileName.isBlank()) throw Exception("Blank overrideFileName")
-            updateOverrideFileName(newOverrideFileName)
-            updateCurrentTaskStatusMessageByAppending("Updated overrideFileName: $newOverrideFileName")
-        } catch (e: Exception) {
-            updateCurrentTaskStatusMessageByAppending("Invalid overrideFileName: $newOverrideFileName reverting to empty value")
-            updateOverrideFileName(EMPTY_STRING)
+        if (newOverrideFileName.isBlank()) {
+            appendTask("Invalid overrideFileName: \"$newOverrideFileName\" — reverting to empty")
+            _overrideFileName.update { EMPTY_STRING }
+        } else {
+            _overrideFileName.update { newOverrideFileName.trim() }
+            appendTask("Updated overrideFileName: ${_overrideFileName.value}")
         }
-    }
-
-    private fun updateSelectedFileName(newSelectedFileName: String) {
-        _selectedFileName.update { newSelectedFileName }
-    }
-
-    private fun updateSelectedFileNameFromUserInput(newSelectedFileNames: String) {
-        try {
-            if (newSelectedFileNames.isBlank()) throw Exception("Blank fileName")
-            updateSelectedFileName(newSelectedFileNames)
-            updateOverrideFileNameFromUserInput(EMPTY_STRING)
-            updateCurrentTaskStatusMessageByAppending("Updated selectedFileName: $newSelectedFileNames")
-        } catch (e: Exception) {
-            updateCurrentTaskStatusMessageByAppending("Invalid selectedFileName: $newSelectedFileNames reverting to empty value")
-            updateSelectedFileName(EMPTY_STRING)
-        }
-    }
-
-    private fun updateSelectedFileUri(newSelectedFileUri: List<Uri>) {
-        _selectedFileUri.update { newSelectedFileUri }
-    }
-
-    fun updateUpdateSelectedFileUriFromUserInput(newSelectedFileUris: List<Uri>) {
-        try {
-            updateSelectedFileUri(newSelectedFileUris)
-            val separator = "\n"
-            val selectedFileNames = newSelectedFileUris.stream().map { selectedFileUri -> selectedFileUri.getFileName() }.collect(
-                Collectors.toList()).joinToString(separator)
-            updateSelectedFileNameFromUserInput(selectedFileNames)
-            updateCurrentTaskStatusMessage("Updated SelectedFileUri: $newSelectedFileUris")
-            updateCurrentSubTaskStatusMessage("Files selected. Ready to Convert")
-        } catch (e: Exception) {
-            updateCurrentTaskStatusMessageByAppending("Invalid SelectedFileUri: $newSelectedFileUris reverting to empty value")
-            updateSelectedFileUri(emptyList())
-        }
-    }
-
-    private fun updateOverrideOutputDirectoryUri(newOverrideOutputPath: Uri?) {
-        _overrideOutputDirectoryUri.update { newOverrideOutputPath }
     }
 
     fun updateOverrideOutputPathFromUserInput(newOverrideOutputPath: Uri) {
+        _overrideOutputDirectoryUri.update { newOverrideOutputPath }
+        appendTask("Updated overrideOutputPath: $newOverrideOutputPath")
+    }
+
+    fun updateUpdateSelectedFileUriFromUserInput(newSelectedFileUris: List<Uri>) {
+        // Backward-compatible entry point (kept for existing callers)
+        updateSelectedFileUrisFromUserInput(newSelectedFileUris)
+    }
+
+    fun updateSelectedFileUrisFromUserInput(newSelectedFileUris: List<Uri>) {
         try {
-            updateOverrideOutputDirectoryUri(newOverrideOutputPath)
-            updateCurrentTaskStatusMessageByAppending("Updated overrideOutputPath: $newOverrideOutputPath")
-        } catch (e: Exception) {
-            updateCurrentTaskStatusMessageByAppending("Invalid overrideOutputPath: $newOverrideOutputPath reverting to empty value")
-            updateOverrideOutputDirectoryUri(null)
+            _selectedFileUri.update { newSelectedFileUris }
+
+            val names = newSelectedFileUris.joinToString(separator = "\n") { it.getFileName() }
+
+            updateSelectedFileNameFromUserInput(names)
+            setTask("Updated SelectedFileUri: $newSelectedFileUris")
+            setSubTask("Files selected. Ready to Convert")
+        } catch (_: Exception) {
+            appendTask("Invalid SelectedFileUri: $newSelectedFileUris — reverting to empty")
+            _selectedFileUri.update { emptyList() }
         }
     }
 
-    private suspend fun showToastAndUpdateStatusMessage(
-        message: String,
-        toastLength: Int,
-        loggerLevel: Level = Level.INFO
-    ) {
-        updateCurrentTaskStatusMessageSuspend(message, loggerLevel)
-        withContext(Dispatchers.Main) {
-            contextHelper.showToast(message, toastLength)
-        }
-    }
+    // ------------------------ Conversion Flow ------------------------
 
     fun convertToPDF(fileUris: List<Uri>) {
-        CoroutineScope(Dispatchers.IO).launch {
-            updateConversionState(TRUE)
+        if (_isCurrentlyConverting.value) {
+            // Avoid double triggers
+            return
+        }
+
+        viewModelScope.launch(Dispatchers.IO) {
+            setConverting(true)
+
             try {
-                val pdfFileName = getFileNameForPdf(fileUris)
+                val pdfFileNames = getPdfFileNames(fileUris)
                 val outputFolder = getOutputFolder()
 
-                updateCurrentTaskStatusMessageSuspend(message = "Conversion from CBZ to PDF started")
-                updateCurrentSubTaskStatusMessage(message = "")
+                setTask("Conversion from CBZ to PDF started")
+                setSubTask("")
+
                 val pdfFiles = convertCbzToPdf(
                     fileUri = fileUris,
                     contextHelper = contextHelper,
-                    subStepStatusAction = { message: String ->
-                        CoroutineScope(Dispatchers.Main).launch {
-                            updateCurrentSubTaskStatusMessageSuspendByAppending(message)
+                    subStepStatusAction = { message ->
+                        // Ensure sub-task updates happen on Main
+                        viewModelScope.launch(Dispatchers.Main) {
+                            appendSubTask(message)
                         }
                     },
                     maxNumberOfPages = _maxNumberOfPages.value,
                     batchSize = _batchSize.value,
-                    outputFileNames = pdfFileName,
+                    outputFileNames = pdfFileNames,
                     overrideSortOrderToUseOffset = _overrideSortOrderToUseOffset.value,
                     overrideMergeFiles = _overrideMergeFiles.value,
                     outputDirectory = outputFolder
                 )
-                checkPdfsFilesSizeAndUpdateStatus(pdfFiles)
+
+                handlePdfResult(pdfFiles)
             } catch (e: Exception) {
-                showToastAndUpdateStatusMessage(
+                showToastAndTask(
                     message = "Conversion failed: ${e.message}",
-                    toastLength = Toast.LENGTH_LONG, Level.WARNING
+                    toastLength = Toast.LENGTH_LONG,
+                    loggerLevel = Level.WARNING
                 )
                 logger.warning("Conversion failed stacktrace: ${e.stackTrace.contentToString()}")
             } finally {
-                updateConversionState(FALSE)
+                setConverting(false)
             }
         }
     }
 
-    private suspend fun checkPdfsFilesSizeAndUpdateStatus(pdfFiles: List<File>) {
+    private suspend fun handlePdfResult(pdfFiles: List<File>) {
         if (pdfFiles.isEmpty()) {
-            throw Exception("No PDF files created, CBZ file is invalid or empty")
+            throw IllegalStateException("No PDF files created, CBZ file is invalid or empty")
+        }
+
+        val msg = if (pdfFiles.size == 1) {
+            "PDF created: ${pdfFiles.first().absolutePath}"
         } else {
-            val message = if (pdfFiles.size == 1) "PDF created: ${pdfFiles.first().absolutePath}"
-            else "Multiple PDFs created: ${pdfFiles.joinToString { "\n ${it.absolutePath}" }}"
-            showToastAndUpdateStatusMessage(
-                message = message,
-                toastLength = Toast.LENGTH_LONG
-            )
-            updateCurrentTaskStatusMessageByAppending("Conversion from CBZ to PDF Completed")
+            "Multiple PDFs created:\n" + pdfFiles.joinToString(separator = "\n") { it.absolutePath }
         }
+
+        showToastAndTask(message = msg, toastLength = Toast.LENGTH_LONG)
+        appendTask("Conversion from CBZ to PDF Completed")
     }
 
-    private fun getFileNameForPdf(filesUri: List<Uri>): List<String> {
-        var fileUri = filesUri.stream().map {it.getFileName()}.collect(Collectors.toList())
-
-        if (_overrideFileName.value != EMPTY_STRING) {
-            fileUri = if(fileUri.size == 1) {
-                List(1) { _overrideFileName.value.plus(".cbz") }
-            } else {
-                List(fileUri.size) { index ->
-                    _overrideFileName.value + "_${index + 1}.cbz"
-                }
-            }
-        }
-        return convertListOfCbzFileNameToPdfFileName(fileUri)
-    }
-
-    private fun getOutputFolder(): File {
-        var outputFolder =
-            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-        if (_overrideOutputDirectoryUri.value != null) {
-            outputFolder = contextHelper.getOutputFolderUri(_overrideOutputDirectoryUri.value)
-        }
-        return outputFolder
-    }
+    // ------------------------ Permissions API ------------------------
 
     fun checkPermissionAndSelectFileAction(
         activity: ComponentActivity,
@@ -310,7 +219,83 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
         PermissionsManager.checkPermissionAndSelectDirectoryAction(activity, directoryPickerLauncher)
     }
 
-   private fun Uri.getFileName(): String {
-        return contextHelper.getFileName(this)
+    // --------------------------- Helpers -----------------------------
+
+    private suspend fun setConverting(value: Boolean) {
+        withContext(Dispatchers.Main) {
+            _isCurrentlyConverting.update { value }
+            logger.info(if (value) "Conversion started" else "Conversion ended")
+        }
     }
+
+    private fun setTask(message: String) {
+        _currentTaskStatus.update { message }
+    }
+
+    private fun appendTask(message: String) {
+        _currentTaskStatus.update { current -> "$message\n$current" }
+    }
+
+    private fun setSubTask(message: String) {
+        _currentSubTaskStatus.update { message }
+    }
+
+    private suspend fun appendSubTask(message: String) {
+        withContext(Dispatchers.Main) {
+            _currentSubTaskStatus.update { current -> "$message\n$current" }
+            logger.info(message)
+        }
+    }
+
+    private fun updateSelectedFileNameFromUserInput(newSelectedFileNames: String) {
+        if (newSelectedFileNames.isBlank()) {
+            appendTask("Invalid selectedFileName: \"$newSelectedFileNames\" — reverting to empty")
+            _selectedFileName.update { EMPTY_STRING }
+        } else {
+            _selectedFileName.update { newSelectedFileNames }
+            // Clear override when new files are chosen
+            updateOverrideFileNameFromUserInput(EMPTY_STRING)
+            appendTask("Updated selectedFileName:\n$newSelectedFileNames")
+        }
+    }
+
+    private fun getPdfFileNames(filesUri: List<Uri>): List<String> {
+        val baseNames = filesUri.map { it.getFileName() }
+
+        val chosenCbzNames = if (_overrideFileName.value.isNotBlank()) {
+            if (baseNames.size == 1) {
+                listOf("${_overrideFileName.value}.cbz")
+            } else {
+                List(baseNames.size) { index -> "${_overrideFileName.value}_${index + 1}.cbz" }
+            }
+        } else {
+            baseNames
+        }
+
+        return chosenCbzNames.map { it.replace(".cbz", ".pdf", ignoreCase = true) }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun getOutputFolder(): File {
+        var outputFolder = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+        overrideOutputDirectoryUri.value?.let { uri ->
+            outputFolder = contextHelper.getOutputFolderUri(uri)
+        }
+        return outputFolder
+    }
+
+    private suspend fun showToastAndTask(
+        message: String,
+        toastLength: Int,
+        loggerLevel: Level = Level.INFO
+    ) {
+        withContext(Dispatchers.Main) {
+            appendTask(message)
+            logger.log(loggerLevel, message)
+            contextHelper.showToast(message, toastLength)
+        }
+    }
+
+    // Extension uses ContextHelper to resolve a display name for the Uri.
+    private fun Uri.getFileName(): String = contextHelper.getFileName(this)
 }

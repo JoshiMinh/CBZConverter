@@ -24,7 +24,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import java.io.FileOutputStream
 
-private val logger = Logger.getLogger("com.puchunguita.cbzconverter.ConversionFunction")
+private val logger = Logger.getLogger("com.joshiminh.cbzconverter.ConversionFunction")
 private val COMBINED_TEMP_CBZ_FILE = "combined_temp.cbz"
 fun convertCbzToPdf(
     fileUri: List<Uri>,
