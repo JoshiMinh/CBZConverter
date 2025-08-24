@@ -22,6 +22,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -33,7 +34,6 @@ import com.joshiminh.cbzconverter.theme.CbzConverterTheme
 fun CbzConverterPage(
     selectedFileName: String,
     viewModel: MainViewModel,
-    activity: ComponentActivity,
     filePickerLauncher: ManagedActivityResultLauncher<Array<String>, List<Uri>>,
     isCurrentlyConverting: Boolean,
     selectedFilesUri: List<Uri>,
@@ -59,7 +59,6 @@ fun CbzConverterPage(
         FileConversionSegment(
             selectedFileName,
             viewModel,
-            activity,
             filePickerLauncher,
             isCurrentlyConverting,
             selectedFilesUri,
@@ -79,7 +78,6 @@ fun CbzConverterPage(
             overrideFileName,
             selectedFilesUri,
             overrideOutputDirectoryUri,
-            activity,
             directoryPickerLauncher,
         )
 
@@ -141,7 +139,6 @@ private fun TasksStatusSegment(
 private fun FileConversionSegment(
     selectedFileName: String,
     viewModel: MainViewModel,
-    activity: ComponentActivity,
     filePickerLauncher: ManagedActivityResultLauncher<Array<String>, List<Uri>>,
     isCurrentlyConverting: Boolean,
     selectedFilesUri: List<Uri>,
@@ -167,7 +164,8 @@ private fun FileConversionSegment(
 
         Button(
             onClick = {
-                viewModel.checkPermissionAndSelectFileAction(activity, filePickerLauncher)
+                val activity = LocalContext.current as? ComponentActivity
+                activity?.let { viewModel.checkPermissionAndSelectFileAction(it, filePickerLauncher) }
             },
             enabled = !isCurrentlyConverting,
         ) {
@@ -193,7 +191,6 @@ fun CbzConverterPagePreview() {
         CbzConverterPage(
             selectedFileName = "Sample File Name",
             viewModel = MainViewModel(contextHelper = ContextHelper(ComponentActivity())),
-            activity = ComponentActivity(),
             filePickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uri: List<Uri> ->
                 uri.let {
                 }
@@ -220,7 +217,6 @@ fun FileConversionSegmentPreview() {
         FileConversionSegment(
             selectedFileName = "Sample File Name",
             viewModel = MainViewModel(contextHelper = ContextHelper(ComponentActivity())),
-            activity = ComponentActivity(),
             filePickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uri: List<Uri> ->
                 uri.let {
                 }

@@ -30,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusManager
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -48,7 +49,6 @@ fun ConfigurationsSegment(
     overrideFileName: String,
     selectedFilesUri: List<Uri>,
     overrideOutputDirectoryUri: Uri?,
-    activity: ComponentActivity,
     directoryPickerLauncher: ManagedActivityResultLauncher<Uri?, Uri?>,
 ) {
     val scrollState = rememberScrollState()
@@ -118,7 +118,6 @@ fun ConfigurationsSegment(
         OutputDirectoryOverrideConfigSegment(
             overrideOutputDirectoryUri,
             viewModel,
-            activity,
             directoryPickerLauncher,
             isCurrentlyConverting,
         )
@@ -129,7 +128,6 @@ fun ConfigurationsSegment(
 private fun OutputDirectoryOverrideConfigSegment(
     overrideOutputDirectoryUri: Uri?,
     viewModel: MainViewModel,
-    activity: ComponentActivity,
     directoryPickerLauncher: ManagedActivityResultLauncher<Uri?, Uri?>,
     isCurrentlyConverting: Boolean,
 ) {
@@ -151,7 +149,8 @@ private fun OutputDirectoryOverrideConfigSegment(
         Button(
             onClick = {
                 // todo look into why you cannot choose any directory, even though you have full access to storage
-                viewModel.checkPermissionAndSelectDirectoryAction(activity, directoryPickerLauncher)
+                val activity = LocalContext.current as? ComponentActivity
+                activity?.let { viewModel.checkPermissionAndSelectDirectoryAction(it, directoryPickerLauncher) }
             },
             enabled = !isCurrentlyConverting
         ) {
@@ -352,7 +351,6 @@ fun ConfigurationsSegmentPreview() {
             overrideFileName = "test",
             selectedFilesUri = listOf(),
             overrideOutputDirectoryUri = null,
-            activity = ComponentActivity(),
             directoryPickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri: Uri? -> }
         )
     }
@@ -416,7 +414,6 @@ fun OutputDirectoryOverrideConfigSegmentPreview() {
         OutputDirectoryOverrideConfigSegment(
             overrideOutputDirectoryUri = null,
             viewModel = MainViewModel(contextHelper = ContextHelper(ComponentActivity())),
-            activity = ComponentActivity(),
             directoryPickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri: Uri? ->
                 uri?.let {
                 }
