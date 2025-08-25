@@ -28,8 +28,8 @@ import kotlinx.coroutines.withContext
 class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
 
     companion object {
-        private const val NOTHING_PROCESSING = "Nothing Processing"
-        private const val NO_FILE_SELECTED = "No file selected"
+        private const val NOTHING_PROCESSING = "Idle"
+        private const val NO_FILE_SELECTED = "No file"
         const val EMPTY_STRING = ""
         private const val DEFAULT_MAX_NUMBER_OF_PAGES = 10_000
         private const val DEFAULT_BATCH_SIZE = 300
@@ -86,9 +86,9 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
         val parsed = maxNumberOfPages.trim().toIntOrNull()
         if (parsed != null && parsed > 0) {
             _maxNumberOfPages.update { parsed }
-            appendTask("Updated maxNumberOfPages size: $parsed")
+            appendTask("Max pages: $parsed")
         } else {
-            appendTask("Invalid maxNumberOfPages size: $maxNumberOfPages — reverting to default")
+            appendTask("Max pages invalid ($maxNumberOfPages). Using $DEFAULT_MAX_NUMBER_OF_PAGES")
             _maxNumberOfPages.update { DEFAULT_MAX_NUMBER_OF_PAGES }
         }
     }
@@ -97,26 +97,26 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
         val parsed = batchSize.trim().toIntOrNull()
         if (parsed != null && parsed > 0) {
             _batchSize.update { parsed }
-            appendTask("Updated batch size: $parsed")
+            appendTask("Batch size: $parsed")
         } else {
-            appendTask("Invalid batch size: $batchSize — reverting to default")
+            appendTask("Batch size invalid ($batchSize). Using $DEFAULT_BATCH_SIZE")
             _batchSize.update { DEFAULT_BATCH_SIZE }
         }
     }
 
     fun updateOverrideFileNameFromUserInput(newOverrideFileName: String) {
         if (newOverrideFileName.isBlank()) {
-            appendTask("Invalid overrideFileName: \"$newOverrideFileName\" — reverting to empty")
             _overrideFileName.update { EMPTY_STRING }
+            appendTask("Output name: default")
         } else {
             _overrideFileName.update { newOverrideFileName.trim() }
-            appendTask("Updated overrideFileName: ${_overrideFileName.value}")
+            appendTask("Output name: ${_overrideFileName.value}")
         }
     }
 
     fun updateOverrideOutputPathFromUserInput(newOverrideOutputPath: Uri) {
         _overrideOutputDirectoryUri.update { newOverrideOutputPath }
-        appendTask("Updated overrideOutputPath: $newOverrideOutputPath")
+        appendTask("Output folder: set")
     }
 
     fun updateUpdateSelectedFileUriFromUserInput(newSelectedFileUris: List<Uri>) {
@@ -131,10 +131,10 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
             val names = newSelectedFileUris.joinToString(separator = "\n") { it.getFileName() }
 
             updateSelectedFileNameFromUserInput(names)
-            setTask("Updated SelectedFileUri: $newSelectedFileUris")
-            setSubTask("Files selected. Ready to Convert")
+            setTask("Selected ${newSelectedFileUris.size} file(s)")
+            setSubTask("Ready to convert")
         } catch (_: Exception) {
-            appendTask("Invalid SelectedFileUri: $newSelectedFileUris — reverting to empty")
+            appendTask("File selection failed. Cleared")
             _selectedFileUri.update { emptyList() }
         }
     }
@@ -154,7 +154,7 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
                 val pdfFileNames = getPdfFileNames(fileUris)
                 val outputFolder = getOutputFolder()
 
-                setTask("Conversion from CBZ to PDF started")
+                setTask("Converting...")
                 setSubTask("")
 
                 val pdfFiles = convertCbzToPdf(
@@ -177,7 +177,7 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
                 handlePdfResult(pdfFiles)
             } catch (e: Exception) {
                 showToastAndTask(
-                    message = "Conversion failed: ${e.message}",
+                    message = "Failed: ${e.message ?: "Unknown error"}",
                     toastLength = Toast.LENGTH_LONG,
                     loggerLevel = Level.WARNING
                 )
@@ -190,17 +190,17 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
 
     private suspend fun handlePdfResult(pdfFiles: List<File>) {
         if (pdfFiles.isEmpty()) {
-            throw IllegalStateException("No PDF files created, CBZ file is invalid or empty")
+            throw IllegalStateException("No PDFs created")
         }
 
         val msg = if (pdfFiles.size == 1) {
-            "PDF created: ${pdfFiles.first().absolutePath}"
+            "Saved: ${pdfFiles.first().absolutePath}"
         } else {
-            "Multiple PDFs created:\n" + pdfFiles.joinToString(separator = "\n") { it.absolutePath }
+            "Saved: ${pdfFiles.size} PDFs"
         }
 
         showToastAndTask(message = msg, toastLength = Toast.LENGTH_LONG)
-        appendTask("Conversion from CBZ to PDF Completed")
+        appendTask("Completed")
     }
 
     // ------------------------ Permissions API ------------------------
@@ -249,13 +249,13 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
 
     private fun updateSelectedFileNameFromUserInput(newSelectedFileNames: String) {
         if (newSelectedFileNames.isBlank()) {
-            appendTask("Invalid selectedFileName: \"$newSelectedFileNames\" — reverting to empty")
+            appendTask("Selected: none")
             _selectedFileName.update { EMPTY_STRING }
         } else {
             _selectedFileName.update { newSelectedFileNames }
             // Clear override when new files are chosen
             updateOverrideFileNameFromUserInput(EMPTY_STRING)
-            appendTask("Updated selectedFileName:\n$newSelectedFileNames")
+            appendTask("Selected: updated")
         }
     }
 

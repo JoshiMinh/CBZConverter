@@ -1,7 +1,11 @@
+/*TODO:
+- [ ] Add PDF Compression
+ */
 @file:Suppress("SameParameterValue")
 
 package com.joshiminh.cbzconverter.ui
 
+import android.content.Intent
 import android.net.Uri
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.ManagedActivityResultLauncher
@@ -33,10 +37,7 @@ import androidx.compose.material3.Divider
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -116,7 +117,7 @@ fun NormalMode(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    OutlinedButton(
+                    Button(
                         onClick = {
                             viewModel.checkPermissionAndSelectFileAction(activity, filePickerLauncher)
                         },
@@ -135,13 +136,12 @@ fun NormalMode(
 
         Spacer(Modifier.height(16.dp))
 
-        // ===== CONFIGURATIONS (toggle-able + info buttons) =====
+        // ===== CONFIGURATIONS (auto-applied) =====
         ElevatedCard(
             modifier = Modifier.fillMaxWidth(),
             elevation = CardDefaults.elevatedCardElevation()
         ) {
-            var expanded by rememberSaveable { mutableStateOf(true) }     // collapsible section
-            var configsEnabled by rememberSaveable { mutableStateOf(true) } // master enable/disable
+            var expanded by rememberSaveable { mutableStateOf(true) } // collapsible section
 
             Column(Modifier.padding(16.dp)) {
                 Row(
@@ -153,19 +153,6 @@ fun NormalMode(
                         fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.weight(1f)
                     )
-
-                    // Master enable/disable switch (disables all child controls)
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(if (configsEnabled) "On" else "Off")
-                        Spacer(Modifier.height(0.dp)) // align nicely
-                        Switch(
-                            checked = configsEnabled,
-                            onCheckedChange = { configsEnabled = it },
-                            enabled = !isCurrentlyConverting,
-                            colors = SwitchDefaults.colors()
-                        )
-                    }
-
                     IconButton(onClick = { expanded = !expanded }) {
                         Icon(
                             imageVector = if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
@@ -182,66 +169,68 @@ fun NormalMode(
                     Column {
                         Spacer(Modifier.height(8.dp))
 
-                        // Max pages per PDF
+                        // Max pages per PDF — auto apply on valid number
                         ConfigNumberItem(
                             title = "Max Pages per PDF",
                             infoText = "How many images go into a single PDF. Lower = more output files.",
                             value = maxNumberOfPages.toString(),
-                            enabled = configsEnabled && !isCurrentlyConverting,
-                        ) { newValue ->
-                            viewModel.updateMaxNumberOfPagesSizeFromUserInput(newValue)
-                            focusManager.clearFocus()
-                        }
+                            enabled = !isCurrentlyConverting,
+                            onValidNumber = { newValue ->
+                                viewModel.updateMaxNumberOfPagesSizeFromUserInput(newValue)
+                                focusManager.clearFocus()
+                            }
+                        )
 
                         Spacer12Divider()
 
-                        // Batch size
+                        // Batch size — auto apply on valid number
                         ConfigNumberItem(
                             title = "Memory Batch Size",
                             infoText = "Processing chunk size. Reduce if you see OutOfMemory errors; increase for speed on strong devices.",
                             value = batchSize.toString(),
-                            enabled = configsEnabled && !isCurrentlyConverting,
-                        ) { newValue ->
-                            viewModel.updateBatchSizeFromUserInput(newValue)
-                            focusManager.clearFocus()
-                        }
+                            enabled = !isCurrentlyConverting,
+                            onValidNumber = { newValue ->
+                                viewModel.updateBatchSizeFromUserInput(newValue)
+                                focusManager.clearFocus()
+                            }
+                        )
 
                         Spacer12Divider()
 
-                        // Sort order override
+                        // Sort order override — instant toggle
                         ConfigSwitchItem(
                             title = "Use Offset Sort Order",
                             infoText = "Override default alphabetical sort using numeric offsets embedded in filenames.",
                             checked = overrideSortOrderToUseOffset,
-                            enabled = configsEnabled && !isCurrentlyConverting
+                            enabled = !isCurrentlyConverting
                         ) { viewModel.toggleOverrideSortOrderToUseOffset(it) }
 
                         Spacer12Divider()
 
-                        // Merge files
+                        // Merge files — instant toggle
                         ConfigSwitchItem(
                             title = "Merge All Files Into One",
                             infoText = "Combine all selected CBZ files into a single PDF. If no custom name is set, the first file's name is used.",
                             checked = overrideMergeFiles,
-                            enabled = configsEnabled && !isCurrentlyConverting
+                            enabled = !isCurrentlyConverting
                         ) { viewModel.toggleMergeFilesOverride(it) }
 
                         Spacer12Divider()
 
-                        // File name override
-                        var tempFileName by remember { mutableStateOf("") }
+                        // File name override — auto apply as the user types.
+                        // IMPORTANT: if empty => send empty string to VM to mean "no override" (fallback to default name).
+                        var editingName by remember(overrideFileName) { mutableStateOf(overrideFileName) }
                         ConfigTextItem(
                             title = "Override Output Filename",
                             infoText = "Set a custom output name (no extension). Leave blank to auto-name.",
-                            text = tempFileName,
-                            enabled = configsEnabled && !isCurrentlyConverting && selectedFilesUri.isNotEmpty(),
-                            supportingText = "Current: ${overrideFileName.ifBlank { "—" }}",
-                            onTextChange = { tempFileName = it },
-                            onApply = {
-                                viewModel.updateOverrideFileNameFromUserInput(tempFileName)
-                                focusManager.clearFocus()
-                            },
-                            showUnsavedHint = tempFileName.isNotBlank() && tempFileName != overrideFileName
+                            text = editingName,
+                            enabled = !isCurrentlyConverting && selectedFilesUri.isNotEmpty(),
+                            supportingText = "Current: ${overrideFileName.ifBlank { "— (default)" }}",
+                            onTextChange = { newText ->
+                                editingName = newText
+                                // Trim and push to VM immediately; blank => default behavior
+                                viewModel.updateOverrideFileNameFromUserInput(newText.trim())
+                            }
                         )
 
                         Spacer12Divider()
@@ -252,7 +241,7 @@ fun NormalMode(
                             infoText = "Pick where converted PDFs will be saved.",
                             primaryText = overrideOutputDirectoryUri?.toString() ?: "Not set",
                             buttonText = "Select Output Directory",
-                            enabled = configsEnabled && !isCurrentlyConverting
+                            enabled = !isCurrentlyConverting
                         ) {
                             viewModel.checkPermissionAndSelectDirectoryAction(activity, directoryPickerLauncher)
                         }
@@ -274,20 +263,48 @@ fun NormalMode(
                     .padding(16.dp),
                 horizontalAlignment = Alignment.Start
             ) {
-                Text("Progress", fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.height(8.dp))
-                Text("Current Task:")
-                Spacer(Modifier.height(6.dp))
-                LazyColumn(Modifier.height(100.dp)) {
-                    items(currentTaskStatus.lines()) { line -> Text(line) }
+                // Decide color for task status
+                val taskColor = when {
+                    currentTaskStatus.contains("Completed", ignoreCase = true) ||
+                            currentTaskStatus.contains("Created", ignoreCase = true)  -> androidx.compose.ui.graphics.Color(0xFF4CAF50) // light green
+                    currentTaskStatus.contains("Failed", ignoreCase = true) ||
+                            currentTaskStatus.contains("Error", ignoreCase = true)   -> androidx.compose.ui.graphics.Color(0xFFF44336) // red
+                    else -> androidx.compose.ui.graphics.Color.Unspecified
                 }
-                Spacer(Modifier.height(12.dp))
-                Text("Current Sub-task:")
-                Spacer(Modifier.height(6.dp))
+
+                // Progress + Current Task inline
+                Text(
+                    text = "Progress: $currentTaskStatus",
+                    fontWeight = FontWeight.SemiBold,
+                    color = taskColor
+                )
+
+                Spacer(Modifier.height(8.dp))
+
+                // Show sub-task lines below
                 LazyColumn(Modifier.height(130.dp)) {
-                    items(currentSubTaskStatus.lines()) { line -> Text(line) }
+                    items(currentSubTaskStatus.lines()) { line ->
+                        Text(line)
+                    }
                 }
             }
+        }
+
+        Spacer(Modifier.height(24.dp))
+
+        // ===== SEND TO KINDLE =====
+        Button(
+            onClick = {
+                val intent = Intent(
+                    Intent.ACTION_VIEW,
+                    Uri.parse("https://www.amazon.com/gp/sendtokindle")
+                )
+                activity.startActivity(intent)
+            },
+            enabled = !isCurrentlyConverting,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Send to Kindle")
         }
 
         Spacer(Modifier.height(24.dp))
@@ -330,13 +347,17 @@ private fun TitleWithInfo(
 
 /* ---------- Reusable compact config rows (with info buttons) ---------- */
 
+/**
+ * Number input that auto-applies to the VM when the text is a valid Int > 0.
+ * Keeps showing the user's raw input; highlights error when invalid.
+ */
 @Composable
 private fun ConfigNumberItem(
     title: String,
     infoText: String,
     value: String,
     enabled: Boolean,
-    onApply: (String) -> Unit
+    onValidNumber: (String) -> Unit
 ) {
     var text by remember(value) { mutableStateOf(value) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -346,9 +367,19 @@ private fun ConfigNumberItem(
 
     OutlinedTextField(
         value = text,
-        onValueChange = {
-            text = it
-            error = it.takeIf { s -> s.isNotBlank() && s.toIntOrNull() == null }?.let { "Enter a number" }
+        onValueChange = { input ->
+            text = input
+            val trimmed = input.trim()
+            val intVal = trimmed.toIntOrNull()
+            error = when {
+                trimmed.isEmpty() -> "Enter a number"
+                intVal == null     -> "Enter a valid number"
+                intVal <= 0        -> "Must be greater than 0"
+                else               -> null
+            }
+            if (error == null) {
+                onValidNumber(trimmed)
+            }
         },
         singleLine = true,
         enabled = enabled,
@@ -357,14 +388,13 @@ private fun ConfigNumberItem(
         isError = error != null,
         supportingText = { error?.let { Text(it) } }
     )
-    Spacer(Modifier.height(8.dp))
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-        Button(onClick = { if (error == null) onApply(text) }, enabled = enabled && error == null) {
-            Text("Apply")
-        }
-    }
+    Spacer(Modifier.height(4.dp))
 }
 
+/**
+ * Text input that auto-applies to the VM on every change.
+ * Blank => means "no override" and VM should fall back to default filename.
+ */
 @Composable
 private fun ConfigTextItem(
     title: String,
@@ -372,9 +402,7 @@ private fun ConfigTextItem(
     text: String,
     enabled: Boolean,
     supportingText: String,
-    onTextChange: (String) -> Unit,
-    onApply: () -> Unit,
-    showUnsavedHint: Boolean
+    onTextChange: (String) -> Unit
 ) {
     TitleWithInfo(title = title, infoText = infoText)
     Spacer(Modifier.height(8.dp))
@@ -384,15 +412,10 @@ private fun ConfigTextItem(
         singleLine = true,
         enabled = enabled,
         modifier = Modifier.fillMaxWidth(),
-        label = {
-            Text(if (showUnsavedHint) "Value not saved — press Apply" else "Type new name")
-        },
+        label = { Text("Type new name (leave blank for default)") },
         supportingText = { Text(supportingText) }
     )
-    Spacer(Modifier.height(8.dp))
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-        Button(onClick = onApply, enabled = enabled) { Text("Apply") }
-    }
+    Spacer(Modifier.height(4.dp))
 }
 
 @Composable
@@ -406,7 +429,11 @@ private fun ConfigSwitchItem(
     TitleWithInfo(title = title, infoText = infoText)
     Spacer(Modifier.height(8.dp))
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Switch(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled)
+        androidx.compose.material3.Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            enabled = enabled
+        )
         Spacer(Modifier.height(4.dp))
     }
 }
