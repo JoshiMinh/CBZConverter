@@ -72,6 +72,9 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
     private val _overrideOutputDirectoryUri = MutableStateFlow<Uri?>(null)
     val overrideOutputDirectoryUri = _overrideOutputDirectoryUri.asStateFlow()
 
+    private val _compressOutputPdf = MutableStateFlow(false)
+    val compressOutputPdf = _compressOutputPdf.asStateFlow()
+
     // --------------------------- Mutators ----------------------------
 
     fun toggleOverrideSortOrderToUseOffset(newValue: Boolean) {
@@ -80,6 +83,10 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
 
     fun toggleMergeFilesOverride(newValue: Boolean) {
         _overrideMergeFiles.update { newValue }
+    }
+
+    fun toggleCompressOutputPdf(newValue: Boolean) {
+        _compressOutputPdf.update { newValue }
     }
 
     fun updateMaxNumberOfPagesSizeFromUserInput(maxNumberOfPages: String) {
@@ -171,6 +178,7 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
                     outputFileNames = pdfFileNames,
                     overrideSortOrderToUseOffset = _overrideSortOrderToUseOffset.value,
                     overrideMergeFiles = _overrideMergeFiles.value,
+                    compressOutputPdf = _compressOutputPdf.value,
                     outputDirectory = outputFolder
                 )
 

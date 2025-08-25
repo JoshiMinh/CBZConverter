@@ -142,6 +142,7 @@ private fun MainApp(
             val overrideMergeFiles by viewModel.overrideMergeFiles.collectAsState()
             val overrideFileName by viewModel.overrideFileName.collectAsState()
             val overrideOutputDirectoryUri by viewModel.overrideOutputDirectoryUri.collectAsState()
+            val compressOutputPdf by viewModel.compressOutputPdf.collectAsState()
 
             // Pickers for files and directory (the latter is now required)
             val filePickerLauncher =
@@ -188,6 +189,7 @@ private fun MainApp(
                         overrideMergeFiles = overrideMergeFiles,
                         overrideFileName = overrideFileName,
                         overrideOutputDirectoryUri = overrideOutputDirectoryUri,
+                        compressOutputPdf = compressOutputPdf,
                         directoryPickerLauncher = directoryPickerLauncher
                     )
                 }
