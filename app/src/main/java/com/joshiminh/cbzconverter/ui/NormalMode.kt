@@ -1,5 +1,5 @@
 /*TODO:
-- [ ] Add PDF Compression
+- [x] Add PDF Compression
  */
 @file:Suppress("SameParameterValue")
 
@@ -73,6 +73,7 @@ fun NormalMode(
     overrideMergeFiles: Boolean,
     overrideFileName: String,
     overrideOutputDirectoryUri: Uri?,
+    compressOutputPdf: Boolean,
     directoryPickerLauncher: ManagedActivityResultLauncher<Uri?, Uri?>
 ) {
     val focusManager: FocusManager = LocalFocusManager.current
@@ -214,6 +215,16 @@ fun NormalMode(
                             checked = overrideMergeFiles,
                             enabled = !isCurrentlyConverting
                         ) { viewModel.toggleMergeFilesOverride(it) }
+
+                        Spacer12Divider()
+
+                        // PDF compression — instant toggle
+                        ConfigSwitchItem(
+                            title = "Compress Output PDF",
+                            infoText = "Use compression to reduce PDF file size (slower processing).",
+                            checked = compressOutputPdf,
+                            enabled = !isCurrentlyConverting
+                        ) { viewModel.toggleCompressOutputPdf(it) }
 
                         Spacer12Divider()
 
