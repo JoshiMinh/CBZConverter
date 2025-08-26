@@ -104,6 +104,34 @@ private fun MainApp(
         }
 
         Screen.MIHON -> {
+            // Collect states for Mihon page
+            val isCurrentlyConverting by viewModel.isCurrentlyConverting.collectAsState()
+            val currentTaskStatus by viewModel.currentTaskStatus.collectAsState()
+            val currentSubTaskStatus by viewModel.currentSubTaskStatus.collectAsState()
+
+            val selectedFileName by viewModel.selectedFileName.collectAsState()
+            val selectedFilesUri by viewModel.selectedFileUri.collectAsState()
+
+            val maxNumberOfPages by viewModel.maxNumberOfPages.collectAsState()
+            val batchSize by viewModel.batchSize.collectAsState()
+            val overrideSortOrderToUseOffset by viewModel.overrideSortOrderToUseOffset.collectAsState()
+            val overrideMergeFiles by viewModel.overrideMergeFiles.collectAsState()
+            val overrideFileName by viewModel.overrideFileName.collectAsState()
+            val overrideOutputDirectoryUri by viewModel.overrideOutputDirectoryUri.collectAsState()
+            val compressOutputPdf by viewModel.compressOutputPdf.collectAsState()
+            val mihonDirectoryUri by viewModel.mihonDirectoryUri.collectAsState()
+            val mihonMangaEntries by viewModel.mihonMangaEntries.collectAsState()
+
+            val directoryPickerLauncher =
+                rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri: Uri? ->
+                    uri?.let { viewModel.updateOverrideOutputPathFromUserInput(it) }
+                }
+
+            val mihonDirectoryPickerLauncher =
+                rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri: Uri? ->
+                    uri?.let { viewModel.updateMihonDirectoryUri(it) }
+                }
+
             Scaffold(
                 topBar = {
                     TopAppBar(
@@ -122,7 +150,28 @@ private fun MainApp(
                         .fillMaxSize()
                         .padding(16.dp)
                 ) {
-                    MihonMode()
+                    MihonMode(
+                        selectedFileName = selectedFileName,
+                        viewModel = viewModel,
+                        activity = activity,
+                        isCurrentlyConverting = isCurrentlyConverting,
+                        selectedFilesUri = selectedFilesUri,
+                        mihonManga = mihonMangaEntries,
+                        currentTaskStatus = currentTaskStatus,
+                        currentSubTaskStatus = currentSubTaskStatus,
+                        maxNumberOfPages = maxNumberOfPages,
+                        batchSize = batchSize,
+                        overrideSortOrderToUseOffset = overrideSortOrderToUseOffset,
+                        overrideMergeFiles = overrideMergeFiles,
+                        overrideFileName = overrideFileName,
+                        overrideOutputDirectoryUri = overrideOutputDirectoryUri,
+                        compressOutputPdf = compressOutputPdf,
+                        directoryPickerLauncher = directoryPickerLauncher,
+                        mihonDirectoryUri = mihonDirectoryUri,
+                        onSelectMihonDirectory = {
+                            viewModel.checkPermissionAndSelectDirectoryAction(activity, mihonDirectoryPickerLauncher)
+                        }
+                    )
                 }
             }
         }

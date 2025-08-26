@@ -1,6 +1,7 @@
 package com.joshiminh.cbzconverter.backend
 
 import android.content.Context
+import android.content.SharedPreferences
 import android.net.Uri
 import android.os.Environment
 import android.provider.OpenableColumns
@@ -78,4 +79,11 @@ class ContextHelper(private val context: Context) {
     fun getExternalStoragePublicDirectory(type: String): File {
         return Environment.getExternalStoragePublicDirectory(type)
     }
+
+    /** Persisted app preferences. */
+    fun getPreferences(): SharedPreferences =
+        context.getSharedPreferences("cbz_converter_prefs", Context.MODE_PRIVATE)
+
+    /** Expose application context when needed for advanced operations. */
+    fun getContext(): Context = context
 }

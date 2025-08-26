@@ -5,6 +5,7 @@ import android.os.Environment
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.ManagedActivityResultLauncher
+import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import java.io.File
@@ -16,6 +17,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+
+data class MihonCbzFile(val name: String, val uri: Uri)
+data class MihonMangaEntry(val name: String, val files: List<MihonCbzFile>)
 
 /**
  * App state holder and conversion orchestrator.
@@ -33,6 +37,7 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
         const val EMPTY_STRING = ""
         private const val DEFAULT_MAX_NUMBER_OF_PAGES = 10_000
         private const val DEFAULT_BATCH_SIZE = 300
+        private const val PREF_MIHO_DIR = "mihon_directory"
     }
 
     private val logger = Logger.getLogger(MainViewModel::class.java.name)
@@ -75,6 +80,19 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
     private val _compressOutputPdf = MutableStateFlow(false)
     val compressOutputPdf = _compressOutputPdf.asStateFlow()
 
+    private val _mihonDirectoryUri = MutableStateFlow<Uri?>(null)
+    val mihonDirectoryUri = _mihonDirectoryUri.asStateFlow()
+
+    private val _mihonMangaEntries = MutableStateFlow<List<MihonMangaEntry>>(emptyList())
+    val mihonMangaEntries = _mihonMangaEntries.asStateFlow()
+
+    init {
+        contextHelper.getPreferences().getString(PREF_MIHO_DIR, null)?.let {
+            _mihonDirectoryUri.value = Uri.parse(it)
+            refreshMihonManga()
+        }
+    }
+
     // --------------------------- Mutators ----------------------------
 
     fun toggleOverrideSortOrderToUseOffset(newValue: Boolean) {
@@ -87,6 +105,13 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
 
     fun toggleCompressOutputPdf(newValue: Boolean) {
         _compressOutputPdf.update { newValue }
+    }
+
+    fun updateMihonDirectoryUri(newUri: Uri) {
+        _mihonDirectoryUri.update { newUri }
+        contextHelper.getPreferences().edit().putString(PREF_MIHO_DIR, newUri.toString()).apply()
+        updateSelectedFileUrisFromUserInput(emptyList())
+        refreshMihonManga()
     }
 
     fun updateMaxNumberOfPagesSizeFromUserInput(maxNumberOfPages: String) {
@@ -140,9 +165,53 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
             updateSelectedFileNameFromUserInput(names)
             setTask("Selected ${newSelectedFileUris.size} file(s)")
             setSubTask("Ready to convert")
+            if (!areSelectedFilesFromSameParent()) {
+                _overrideMergeFiles.update { false }
+            }
         } catch (_: Exception) {
             appendTask("File selection failed. Cleared")
             _selectedFileUri.update { emptyList() }
+        }
+    }
+
+    fun toggleFileSelection(uri: Uri) {
+        val current = _selectedFileUri.value.toMutableList()
+        if (current.contains(uri)) current.remove(uri) else current.add(uri)
+        updateSelectedFileUrisFromUserInput(current)
+    }
+
+    fun areSelectedFilesFromSameParent(): Boolean {
+        val ctx = contextHelper.getContext()
+        val selected = _selectedFileUri.value
+        if (selected.size <= 1) return true
+        val firstParent = DocumentFile.fromSingleUri(ctx, selected.first())?.parentFile?.uri
+        return selected.all {
+            DocumentFile.fromSingleUri(ctx, it)?.parentFile?.uri == firstParent
+        }
+    }
+
+    private fun refreshMihonManga() {
+        val rootUri = _mihonDirectoryUri.value ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            val ctx = contextHelper.getContext()
+            val root = DocumentFile.fromTreeUri(ctx, rootUri) ?: return@launch
+            val downloads = root.findFile("downloads") ?: return@launch
+            val extensions = downloads.findFile("extensions") ?: return@launch
+
+            val result = mutableListOf<MihonMangaEntry>()
+            extensions.listFiles().forEach { ext ->
+                if (!ext.isDirectory) return@forEach
+                ext.listFiles().forEach { manga ->
+                    if (!manga.isDirectory) return@forEach
+                    val cbzFiles = manga.listFiles()
+                        .filter { !it.isDirectory && it.name?.endsWith(".cbz", true) == true }
+                        .map { MihonCbzFile(it.name ?: "Unknown", it.uri) }
+                    if (cbzFiles.isNotEmpty()) {
+                        result.add(MihonMangaEntry(manga.name ?: "Unknown", cbzFiles))
+                    }
+                }
+            }
+            _mihonMangaEntries.value = result.sortedBy { it.name.lowercase() }
         }
     }
 
