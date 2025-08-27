@@ -1,5 +1,6 @@
 package com.joshiminh.cbzconverter.backend
 
+import android.content.Intent
 import android.net.Uri
 import android.os.Environment
 import android.widget.Toast
@@ -116,6 +117,17 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
 
     fun updateMihonDirectoryUri(newUri: Uri) {
         _mihonDirectoryUri.update { newUri }
+
+        // Persist read/write access so the directory remains available across app launches
+        runCatching {
+            contextHelper.getContext().contentResolver.takePersistableUriPermission(
+                newUri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            )
+        }.onFailure { e ->
+            logger.warning("Failed to persist Mihon directory permission: ${e.message}")
+        }
+
         contextHelper.getPreferences().edit().putString(PREF_MIHON_DIR, newUri.toString()).apply()
         updateSelectedFileUrisFromUserInput(emptyList())
         refreshMihonManga()
@@ -239,8 +251,8 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
             setConverting(true)
 
             try {
-                val pdfFileNames = getPdfFileNames(fileUris)
                 val outputFolder = getOutputFolder()
+                val pdfFileNames = resolveFileNameConflicts(getPdfFileNames(fileUris), outputFolder)
 
                 setTask("Converting...")
                 setSubTask("")
@@ -292,8 +304,9 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
             setConverting(true)
 
             try {
-                val epubFileNames = getPdfFileNames(fileUris).map { it.replace(".pdf", ".epub", true) }
                 val outputFolder = getOutputFolder()
+                val epubBaseNames = getPdfFileNames(fileUris).map { it.replace(".pdf", ".epub", true) }
+                val epubFileNames = resolveFileNameConflicts(epubBaseNames, outputFolder)
 
                 setTask("Converting to EPUB...")
                 setSubTask("")
@@ -412,10 +425,20 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
         }
     }
 
-    private fun getPdfFileNames(filesUri: List<Uri>): List<String> {
-        val baseNames = filesUri.map { it.getFileName() }
+    private fun extractChapterNumber(name: String): String? {
+        val match = Regex("(\\d+)(?!.*\\d)").find(name)
+        return match?.value
+    }
 
-        val chosenCbzNames: List<String> = when {
+    private fun getPdfFileNames(filesUri: List<Uri>): List<String> {
+        val ctx = contextHelper.getContext()
+        val baseNames = filesUri.map { it.getFileName() }
+        val mangaNames = filesUri.mapIndexed { index, uri ->
+            DocumentFile.fromSingleUri(ctx, uri)?.parentFile?.name
+                ?: baseNames[index].substringBeforeLast('.', baseNames[index])
+        }
+
+        val chosenCbzNames: MutableList<String> = when {
             _overrideFileName.value.isNotBlank() && _overrideMergeFiles.value -> {
                 val names = mutableListOf("${_overrideFileName.value}.cbz")
                 if (baseNames.size > 1) {
@@ -425,24 +448,50 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
             }
             _overrideFileName.value.isNotBlank() -> {
                 if (baseNames.size == 1) {
-                    listOf("${_overrideFileName.value}.cbz")
+                    mutableListOf("${_overrideFileName.value}.cbz")
                 } else {
-                    List(baseNames.size) { index -> "${_overrideFileName.value}_${index + 1}.cbz" }
+                    MutableList(baseNames.size) { index -> "${_overrideFileName.value}_${index + 1}.cbz" }
                 }
             }
-            _overrideMergeFiles.value && areSelectedFilesFromSameParent() -> {
-                val ctx = contextHelper.getContext()
-                val parentName = DocumentFile.fromSingleUri(ctx, filesUri.first())?.parentFile?.name
-                    ?: baseNames.first()
-                mutableListOf<String>().apply {
-                    add("$parentName.cbz")
-                    addAll(baseNames.drop(1))
+            else -> {
+                filesUri.mapIndexed { index, _ ->
+                    val mangaName = mangaNames[index]
+                    val baseNameNoExt = baseNames[index].substringBeforeLast('.', baseNames[index])
+                    val chapter = if (_autoNameWithChapters.value) {
+                        extractChapterNumber(baseNameNoExt)
+                    } else null
+                    val suffix = when {
+                        chapter != null -> " - $chapter"
+                        filesUri.size == 1 -> ""
+                        else -> " - ${index + 1}"
+                    }
+                    "$mangaName$suffix.cbz"
+                }.toMutableList().apply {
+                    if (_overrideMergeFiles.value && areSelectedFilesFromSameParent()) {
+                        this[0] = "${mangaNames.first()}.cbz"
+                    }
                 }
             }
-            else -> baseNames
         }
 
         return chosenCbzNames.map { it.replace(".cbz", ".pdf", ignoreCase = true) }
+    }
+
+    private fun resolveFileNameConflicts(names: List<String>, outputFolder: File): List<String> {
+        val existing = outputFolder.list()?.toMutableSet() ?: mutableSetOf()
+        return names.map { base ->
+            var candidate = base
+            val dotIndex = candidate.lastIndexOf('.')
+            val namePart = if (dotIndex != -1) candidate.substring(0, dotIndex) else candidate
+            val extension = if (dotIndex != -1) candidate.substring(dotIndex) else ""
+            var version = 1
+            while (existing.contains(candidate)) {
+                candidate = "$namePart $version$extension"
+                version++
+            }
+            existing.add(candidate)
+            candidate
+        }
     }
 
     @Suppress("DEPRECATION")
