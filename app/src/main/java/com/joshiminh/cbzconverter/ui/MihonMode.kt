@@ -124,8 +124,30 @@ fun MihonMode(
                 Text("Manga Selection", fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(8.dp))
                 if (mihonDirectoryUri != null) {
+                    var searchQuery by rememberSaveable { mutableStateOf("") }
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        label = { Text("Search") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    val filtered = remember(mihonManga, searchQuery) {
+                        if (searchQuery.isBlank()) {
+                            mihonManga
+                        } else {
+                            val regex = runCatching { Regex(searchQuery, RegexOption.IGNORE_CASE) }.getOrNull()
+                            if (regex != null) {
+                                mihonManga.filter { regex.containsMatchIn(it.name) }
+                            } else {
+                                val lower = searchQuery.lowercase()
+                                mihonManga.filter { it.name.lowercase().contains(lower) }
+                            }
+                        }
+                    }
                     MangaToggleList(
-                        manga = mihonManga,
+                        manga = filtered,
                         selectedUris = selectedFilesUri,
                         onToggle = { viewModel.toggleFileSelection(it) }
                     )
@@ -168,7 +190,15 @@ fun MihonMode(
                     onClick = { if (selectedFilesUri.isNotEmpty()) viewModel.convertToPDF(selectedFilesUri) },
                     enabled = selectedFilesUri.isNotEmpty() && !isCurrentlyConverting,
                     modifier = Modifier.fillMaxWidth()
-                ) { Text("Convert") }
+                ) { Text("Convert to PDF") }
+
+                Spacer(Modifier.height(8.dp))
+
+                Button(
+                    onClick = { if (selectedFilesUri.isNotEmpty()) viewModel.convertToEPUB(selectedFilesUri) },
+                    enabled = selectedFilesUri.isNotEmpty() && !isCurrentlyConverting,
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Convert to EPUB") }
             }
         }
 
