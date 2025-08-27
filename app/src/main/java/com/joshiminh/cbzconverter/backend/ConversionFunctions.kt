@@ -23,10 +23,11 @@ import java.util.stream.IntStream
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 import java.util.zip.ZipOutputStream
+import java.util.zip.CRC32
 import kotlin.math.ceil
 import kotlin.streams.asStream
 
-private val logger = Logger.getLogger("com.joshiminh.cbzconverter.ConversionFunction")
+private val logger = Logger.getLogger("com.joshiminh.cbzconverter.ConversionFunctions")
 private const val COMBINED_TEMP_CBZ_FILE = "combined_temp.cbz"
 
 /**
@@ -170,6 +171,264 @@ private fun mergeFilesAndCreatePdf(
     )
 
     return outputFiles
+}
+
+/**
+ * Entry point for converting one or multiple CBZ files to EPUB(s).
+ */
+fun convertCbzToEpub(
+    fileUri: List<Uri>,
+    contextHelper: ContextHelper,
+    subStepStatusAction: (String) -> Unit = { status -> logger.info(status) },
+    outputFileNames: List<String> = List(fileUri.size) { index -> "output_$index.epub" },
+    overrideSortOrderToUseOffset: Boolean = false,
+    overrideMergeFiles: Boolean = false,
+    outputDirectory: File = contextHelper.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+): List<File> {
+    if (fileUri.isEmpty()) return mutableListOf()
+
+    val outputFiles = mutableListOf<File>()
+    contextHelper.getCacheDir().deleteRecursively()
+
+    return if (overrideMergeFiles) {
+        mergeFilesAndCreateEpub(
+            contextHelper = contextHelper,
+            fileUri = fileUri,
+            subStepStatusAction = subStepStatusAction,
+            outputFileNames = outputFileNames,
+            outputFiles = outputFiles,
+            overrideSortOrderToUseOffset = overrideSortOrderToUseOffset,
+            outputDirectory = outputDirectory
+        )
+    } else {
+        applyEachFileAndCreateEpub(
+            fileUri = fileUri,
+            outputFileNames = outputFileNames,
+            contextHelper = contextHelper,
+            subStepStatusAction = subStepStatusAction,
+            outputFiles = outputFiles,
+            overrideSortOrderToUseOffset = overrideSortOrderToUseOffset,
+            outputDirectory = outputDirectory
+        )
+    }
+}
+
+private fun applyEachFileAndCreateEpub(
+    fileUri: List<Uri>,
+    outputFileNames: List<String>,
+    contextHelper: ContextHelper,
+    subStepStatusAction: (String) -> Unit,
+    outputFiles: MutableList<File>,
+    overrideSortOrderToUseOffset: Boolean,
+    outputDirectory: File
+): MutableList<File> {
+    fileUri.forEachIndexed { index, uri ->
+        val outputFileName = outputFileNames[index]
+
+        try {
+            val tempFile = copyCbzToCacheAndCloseInputStream(
+                contextHelper = contextHelper,
+                subStepStatusAction = subStepStatusAction,
+                uri = uri
+            )
+
+            createEpubFromCbz(
+                tempFile = tempFile,
+                subStepStatusAction = subStepStatusAction,
+                overrideSortOrderToUseOffset = overrideSortOrderToUseOffset,
+                outputFileName = outputFileName,
+                outputDirectory = outputDirectory,
+                outputFiles = outputFiles
+            )
+        } catch (_: IOException) {
+            return@forEachIndexed
+        }
+    }
+    return outputFiles
+}
+
+private fun mergeFilesAndCreateEpub(
+    contextHelper: ContextHelper,
+    fileUri: List<Uri>,
+    subStepStatusAction: (String) -> Unit,
+    outputFileNames: List<String>,
+    outputFiles: MutableList<File>,
+    overrideSortOrderToUseOffset: Boolean,
+    outputDirectory: File
+): MutableList<File> {
+    subStepStatusAction("Creating $COMBINED_TEMP_CBZ_FILE in Cache")
+    val combinedTempFile = File(contextHelper.getCacheDir(), COMBINED_TEMP_CBZ_FILE)
+
+    ZipOutputStream(combinedTempFile.outputStream()).use { zipOutputStream ->
+        fileUri.forEachIndexed { index, uri ->
+            addEntriesToZip(
+                zipOutputStream = zipOutputStream,
+                fileName = outputFileNames[index],
+                index = index,
+                subStepStatusAction = subStepStatusAction,
+                contextHelper = contextHelper,
+                uri = uri
+            )
+        }
+    }
+
+    val outputFileName = outputFileNames.first()
+
+    createEpubFromCbz(
+        tempFile = combinedTempFile,
+        subStepStatusAction = subStepStatusAction,
+        overrideSortOrderToUseOffset = overrideSortOrderToUseOffset,
+        outputFileName = outputFileName,
+        outputDirectory = outputDirectory,
+        outputFiles = outputFiles
+    )
+
+    return outputFiles
+}
+
+private fun createEpubFromCbz(
+    tempFile: File,
+    subStepStatusAction: (String) -> Unit,
+    overrideSortOrderToUseOffset: Boolean,
+    outputFileName: String,
+    outputDirectory: File,
+    outputFiles: MutableList<File>
+) {
+    val outputFile = File(outputDirectory, outputFileName)
+    val zipFile = ZipFile(tempFile)
+    val zipFileEntriesList = orderZipEntriesToList(
+        overrideSortOrderToUseOffset = overrideSortOrderToUseOffset,
+        zipFile = zipFile
+    ).filter { !it.isDirectory }
+
+    if (!outputDirectory.exists()) outputDirectory.mkdirs()
+
+    createEpubFromImageList(
+        imagesToProcess = zipFileEntriesList,
+        outputFile = outputFile,
+        zipFile = zipFile,
+        subStepStatusAction = subStepStatusAction
+    )
+
+    zipFile.close()
+    tempFile.delete()
+    outputFiles.add(outputFile)
+}
+
+private fun createEpubFromImageList(
+    imagesToProcess: List<ZipEntry>,
+    outputFile: File,
+    zipFile: ZipFile,
+    subStepStatusAction: (String) -> Unit
+) {
+    ZipOutputStream(FileOutputStream(outputFile)).use { out ->
+        // mimetype must be first and uncompressed
+        val mimeBytes = "application/epub+zip".toByteArray()
+        val mimetype = ZipEntry("mimetype").apply {
+            method = ZipOutputStream.STORED
+            size = mimeBytes.size.toLong()
+            crc = CRC32().apply { update(mimeBytes) }.value
+        }
+        out.putNextEntry(mimetype)
+        out.write(mimeBytes)
+        out.closeEntry()
+
+        out.putNextEntry(ZipEntry("META-INF/"))
+        out.closeEntry()
+        val containerXml = """<?xml version="1.0"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles>
+    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>"""
+        out.putNextEntry(ZipEntry("META-INF/container.xml"))
+        out.write(containerXml.toByteArray())
+        out.closeEntry()
+
+        out.putNextEntry(ZipEntry("OEBPS/"))
+        out.closeEntry()
+        out.putNextEntry(ZipEntry("OEBPS/Images/"))
+        out.closeEntry()
+
+        val manifestItems = mutableListOf<String>()
+        val spineItems = mutableListOf<String>()
+
+        imagesToProcess.forEachIndexed { index, entry ->
+            subStepStatusAction("Processing page ${index + 1}")
+            val bytes = zipFile.getInputStream(entry).use { it.readBytes() }
+            val ext = getFileExtension(entry.name)
+            val imageName = "image$index$ext"
+            val pageName = "page$index.xhtml"
+
+            out.putNextEntry(ZipEntry("OEBPS/Images/$imageName"))
+            out.write(bytes)
+            out.closeEntry()
+
+            val xhtml = """<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head><title>Page ${index + 1}</title></head>
+  <body><img src="Images/$imageName" alt="Page ${index + 1}"/></body>
+</html>"""
+            out.putNextEntry(ZipEntry("OEBPS/$pageName"))
+            out.write(xhtml.toByteArray())
+            out.closeEntry()
+
+            manifestItems.add("<item id=\"img$index\" href=\"Images/$imageName\" media-type=\"${getMimeType(ext)}\"/>")
+            manifestItems.add("<item id=\"page$index\" href=\"$pageName\" media-type=\"application/xhtml+xml\"/>")
+            spineItems.add("<itemref idref=\"page$index\"/>")
+        }
+
+        val opf = """<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" unique-identifier="BookId" version="3.0">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:identifier id="BookId">cbzconverter-${System.currentTimeMillis()}</dc:identifier>
+    <dc:title>Converted Manga</dc:title>
+  </metadata>
+  <manifest>
+    ${manifestItems.joinToString("\n    ")}
+    <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
+  </manifest>
+  <spine toc="ncx">
+    ${spineItems.joinToString("\n    ")}
+  </spine>
+</package>"""
+        out.putNextEntry(ZipEntry("OEBPS/content.opf"))
+        out.write(opf.toByteArray())
+        out.closeEntry()
+
+        val navPoints = spineItems.mapIndexed { index, _ ->
+            """<navPoint id=\"navPoint-$index\" playOrder=\"${index + 1}\">
+      <navLabel><text>Page ${index + 1}</text></navLabel>
+      <content src=\"page$index.xhtml\"/>
+    </navPoint>"""
+        }.joinToString("\n    ")
+        val ncx = """<?xml version="1.0" encoding="UTF-8"?>
+<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
+  <head>
+    <meta name="dtb:uid" content="cbzconverter"/>
+  </head>
+  <docTitle><text>Converted Manga</text></docTitle>
+  <navMap>
+    $navPoints
+  </navMap>
+</ncx>"""
+        out.putNextEntry(ZipEntry("OEBPS/toc.ncx"))
+        out.write(ncx.toByteArray())
+        out.closeEntry()
+    }
+}
+
+private fun getFileExtension(name: String): String {
+    val dot = name.lastIndexOf('.')
+    return if (dot != -1) name.substring(dot) else ""
+}
+
+private fun getMimeType(extension: String): String = when (extension.lowercase()) {
+    ".jpg", ".jpeg" -> "image/jpeg"
+    ".png" -> "image/png"
+    ".gif" -> "image/gif"
+    ".webp" -> "image/webp"
+    else -> "application/octet-stream"
 }
 
 /**

@@ -37,7 +37,7 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
         const val EMPTY_STRING = ""
         private const val DEFAULT_MAX_NUMBER_OF_PAGES = 10_000
         private const val DEFAULT_BATCH_SIZE = 300
-        private const val PREF_MIHO_DIR = "mihon_directory"
+        private const val PREF_MIHON_DIR = "mihon_directory"
     }
 
     private val logger = Logger.getLogger(MainViewModel::class.java.name)
@@ -90,7 +90,7 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
     val mihonMangaEntries = _mihonMangaEntries.asStateFlow()
 
     init {
-        contextHelper.getPreferences().getString(PREF_MIHO_DIR, null)?.let {
+        contextHelper.getPreferences().getString(PREF_MIHON_DIR, null)?.let {
             _mihonDirectoryUri.value = Uri.parse(it)
             refreshMihonManga()
         }
@@ -116,7 +116,7 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
 
     fun updateMihonDirectoryUri(newUri: Uri) {
         _mihonDirectoryUri.update { newUri }
-        contextHelper.getPreferences().edit().putString(PREF_MIHO_DIR, newUri.toString()).apply()
+        contextHelper.getPreferences().edit().putString(PREF_MIHON_DIR, newUri.toString()).apply()
         updateSelectedFileUrisFromUserInput(emptyList())
         refreshMihonManga()
     }
@@ -277,6 +277,55 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
         }
     }
 
+    fun convertToEPUB(fileUris: List<Uri>) {
+        if (_overrideMergeFiles.value && !areSelectedFilesFromSameParent()) {
+            appendTask("Merge disabled: files from different manga")
+            contextHelper.showToast("Cannot merge files from different manga", Toast.LENGTH_LONG)
+            _overrideMergeFiles.update { false }
+        }
+
+        if (_isCurrentlyConverting.value) {
+            return
+        }
+
+        viewModelScope.launch(Dispatchers.IO) {
+            setConverting(true)
+
+            try {
+                val epubFileNames = getPdfFileNames(fileUris).map { it.replace(".pdf", ".epub", true) }
+                val outputFolder = getOutputFolder()
+
+                setTask("Converting to EPUB...")
+                setSubTask("")
+
+                val epubFiles = convertCbzToEpub(
+                    fileUri = fileUris,
+                    contextHelper = contextHelper,
+                    subStepStatusAction = { message ->
+                        viewModelScope.launch(Dispatchers.Main) {
+                            appendSubTask(message)
+                        }
+                    },
+                    outputFileNames = epubFileNames,
+                    overrideSortOrderToUseOffset = _overrideSortOrderToUseOffset.value,
+                    overrideMergeFiles = _overrideMergeFiles.value,
+                    outputDirectory = outputFolder
+                )
+
+                handleEpubResult(epubFiles)
+            } catch (e: Exception) {
+                showToastAndTask(
+                    message = "Failed: ${e.message ?: "Unknown error"}",
+                    toastLength = Toast.LENGTH_LONG,
+                    loggerLevel = Level.WARNING
+                )
+                logger.warning("Conversion failed stacktrace: ${e.stackTrace.contentToString()}")
+            } finally {
+                setConverting(false)
+            }
+        }
+    }
+
     private suspend fun handlePdfResult(pdfFiles: List<File>) {
         if (pdfFiles.isEmpty()) {
             throw IllegalStateException("No PDFs created")
@@ -286,6 +335,21 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
             "Saved: ${pdfFiles.first().absolutePath}"
         } else {
             "Saved: ${pdfFiles.size} PDFs"
+        }
+
+        showToastAndTask(message = msg, toastLength = Toast.LENGTH_LONG)
+        appendTask("Completed")
+    }
+
+    private suspend fun handleEpubResult(epubFiles: List<File>) {
+        if (epubFiles.isEmpty()) {
+            throw IllegalStateException("No EPUBs created")
+        }
+
+        val msg = if (epubFiles.size == 1) {
+            "Saved: ${epubFiles.first().absolutePath}"
+        } else {
+            "Saved: ${epubFiles.size} EPUBs"
         }
 
         showToastAndTask(message = msg, toastLength = Toast.LENGTH_LONG)
