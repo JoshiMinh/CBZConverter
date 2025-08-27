@@ -119,6 +119,7 @@ private fun MainApp(
             val overrideFileName by viewModel.overrideFileName.collectAsState()
             val overrideOutputDirectoryUri by viewModel.overrideOutputDirectoryUri.collectAsState()
             val compressOutputPdf by viewModel.compressOutputPdf.collectAsState()
+            val autoNameWithChapters by viewModel.autoNameWithChapters.collectAsState()
             val mihonDirectoryUri by viewModel.mihonDirectoryUri.collectAsState()
             val mihonMangaEntries by viewModel.mihonMangaEntries.collectAsState()
 
@@ -166,6 +167,7 @@ private fun MainApp(
                         overrideFileName = overrideFileName,
                         overrideOutputDirectoryUri = overrideOutputDirectoryUri,
                         compressOutputPdf = compressOutputPdf,
+                        autoNameWithChapters = autoNameWithChapters,
                         directoryPickerLauncher = directoryPickerLauncher,
                         mihonDirectoryUri = mihonDirectoryUri,
                         onSelectMihonDirectory = {
