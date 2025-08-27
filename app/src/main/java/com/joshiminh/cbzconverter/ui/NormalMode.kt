@@ -12,7 +12,6 @@ import androidx.activity.compose.ManagedActivityResultLauncher
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -81,7 +80,7 @@ fun NormalMode(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(16.dp)
+            .padding(horizontal = 8.dp, vertical = 16.dp)
             .verticalScroll(rememberScrollState()),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -90,12 +89,9 @@ fun NormalMode(
             modifier = Modifier.fillMaxWidth(),
             elevation = CardDefaults.elevatedCardElevation()
         ) {
-            Column(Modifier.padding(16.dp)) {
-                Text("CBZ to PDF", fontWeight = FontWeight.SemiBold)
+            Column(Modifier.padding(8.dp)) {
+                Text("Selected File(s)", fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(8.dp))
-
-                Text(text = "Selected File(s):")
-                Spacer(Modifier.height(6.dp))
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors()
@@ -109,29 +105,34 @@ fun NormalMode(
                         text = selectedSummary,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(12.dp)
+                            .padding(8.dp)
                     )
                 }
 
                 Spacer(Modifier.height(12.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Button(
-                        onClick = {
-                            viewModel.checkPermissionAndSelectFileAction(activity, filePickerLauncher)
-                        },
-                        enabled = !isCurrentlyConverting,
-                        modifier = Modifier.weight(1f)
-                    ) { Text("Select CBZ File(s)") }
+                Button(
+                    onClick = {
+                        viewModel.checkPermissionAndSelectFileAction(activity, filePickerLauncher)
+                    },
+                    enabled = !isCurrentlyConverting,
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Select CBZ File(s)") }
 
-                    Button(
-                        onClick = { if (selectedFilesUri.isNotEmpty()) viewModel.convertToPDF(selectedFilesUri) },
-                        enabled = selectedFilesUri.isNotEmpty() && !isCurrentlyConverting,
-                        modifier = Modifier.weight(1f)
-                    ) { Text("Convert") }
-                }
+                Spacer(Modifier.height(12.dp))
+
+                Button(
+                    onClick = { if (selectedFilesUri.isNotEmpty()) viewModel.convertToPDF(selectedFilesUri) },
+                    enabled = selectedFilesUri.isNotEmpty() && !isCurrentlyConverting,
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Convert to PDF") }
+
+                Spacer(Modifier.height(8.dp))
+
+                Button(
+                    onClick = { if (selectedFilesUri.isNotEmpty()) viewModel.convertToEPUB(selectedFilesUri) },
+                    enabled = selectedFilesUri.isNotEmpty() && !isCurrentlyConverting,
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Convert to EPUB") }
             }
         }
 
@@ -144,7 +145,7 @@ fun NormalMode(
         ) {
             var expanded by rememberSaveable { mutableStateOf(true) } // collapsible section
 
-            Column(Modifier.padding(16.dp)) {
+            Column(Modifier.padding(8.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
@@ -271,7 +272,7 @@ fun NormalMode(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp),
+                    .padding(8.dp),
                 horizontalAlignment = Alignment.Start
             ) {
                 // Decide color for task status

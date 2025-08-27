@@ -298,7 +298,7 @@ fun MihonMode(
                         // Autonaming with chapters — instant toggle
                         ConfigSwitchItem(
                             title = "Autonaming with Chapters",
-                            infoText = "Automatically name outputs using chapter numbers.",
+                            infoText = "Automatically name outputs using manga title and detected chapter numbers.",
                             checked = autoNameWithChapters,
                             enabled = !isCurrentlyConverting
                         ) { viewModel.toggleAutoNameWithChapters(it) }
