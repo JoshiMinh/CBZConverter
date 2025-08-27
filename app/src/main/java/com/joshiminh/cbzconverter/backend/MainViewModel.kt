@@ -196,12 +196,11 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
             val ctx = contextHelper.getContext()
             val root = DocumentFile.fromTreeUri(ctx, rootUri) ?: return@launch
             val downloads = root.findFile("downloads") ?: return@launch
-            val extensions = downloads.findFile("extensions") ?: return@launch
 
             val result = mutableListOf<MihonMangaEntry>()
-            extensions.listFiles().forEach { ext ->
-                if (!ext.isDirectory) return@forEach
-                ext.listFiles().forEach { manga ->
+            downloads.listFiles().forEach { extension ->
+                if (!extension.isDirectory) return@forEach
+                extension.listFiles().forEach { manga ->
                     if (!manga.isDirectory) return@forEach
                     val cbzFiles = manga.listFiles()
                         .filter { !it.isDirectory && it.name?.endsWith(".cbz", true) == true }
@@ -218,6 +217,12 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
     // ------------------------ Conversion Flow ------------------------
 
     fun convertToPDF(fileUris: List<Uri>) {
+        if (_overrideMergeFiles.value && !areSelectedFilesFromSameParent()) {
+            appendTask("Merge disabled: files from different manga")
+            contextHelper.showToast("Cannot merge files from different manga", Toast.LENGTH_LONG)
+            _overrideMergeFiles.update { false }
+        }
+
         if (_isCurrentlyConverting.value) {
             // Avoid double triggers
             return
@@ -339,14 +344,31 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
     private fun getPdfFileNames(filesUri: List<Uri>): List<String> {
         val baseNames = filesUri.map { it.getFileName() }
 
-        val chosenCbzNames = if (_overrideFileName.value.isNotBlank()) {
-            if (baseNames.size == 1) {
-                listOf("${_overrideFileName.value}.cbz")
-            } else {
-                List(baseNames.size) { index -> "${_overrideFileName.value}_${index + 1}.cbz" }
+        val chosenCbzNames: List<String> = when {
+            _overrideFileName.value.isNotBlank() && _overrideMergeFiles.value -> {
+                val names = mutableListOf("${_overrideFileName.value}.cbz")
+                if (baseNames.size > 1) {
+                    names.addAll(baseNames.drop(1))
+                }
+                names
             }
-        } else {
-            baseNames
+            _overrideFileName.value.isNotBlank() -> {
+                if (baseNames.size == 1) {
+                    listOf("${_overrideFileName.value}.cbz")
+                } else {
+                    List(baseNames.size) { index -> "${_overrideFileName.value}_${index + 1}.cbz" }
+                }
+            }
+            _overrideMergeFiles.value && areSelectedFilesFromSameParent() -> {
+                val ctx = contextHelper.getContext()
+                val parentName = DocumentFile.fromSingleUri(ctx, filesUri.first())?.parentFile?.name
+                    ?: baseNames.first()
+                mutableListOf<String>().apply {
+                    add("$parentName.cbz")
+                    addAll(baseNames.drop(1))
+                }
+            }
+            else -> baseNames
         }
 
         return chosenCbzNames.map { it.replace(".cbz", ".pdf", ignoreCase = true) }
