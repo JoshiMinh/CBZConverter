@@ -53,6 +53,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusManager
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.joshiminh.cbzconverter.backend.MainViewModel
@@ -77,6 +78,7 @@ fun MihonMode(
     overrideFileName: String,
     overrideOutputDirectoryUri: Uri?,
     compressOutputPdf: Boolean,
+    autoNameWithChapters: Boolean,
     directoryPickerLauncher: ManagedActivityResultLauncher<Uri?, Uri?>,
     mihonDirectoryUri: Uri?,
     onSelectMihonDirectory: () -> Unit
@@ -87,7 +89,7 @@ fun MihonMode(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(16.dp)
+            .padding(horizontal = 8.dp, vertical = 16.dp)
             .verticalScroll(rememberScrollState()),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -96,7 +98,7 @@ fun MihonMode(
             modifier = Modifier.fillMaxWidth(),
             elevation = CardDefaults.elevatedCardElevation()
         ) {
-            Column(Modifier.padding(16.dp)) {
+            Column(Modifier.padding(8.dp)) {
                 Text("Select Mihon Directory", fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(8.dp))
                 Text(text = mihonDirectoryUri?.toString() ?: "None")
@@ -113,17 +115,36 @@ fun MihonMode(
 
         Spacer(Modifier.height(16.dp))
 
-        // ===== FILE PICK / ACTIONS =====
+        // ===== MANGA OPTIONS =====
         ElevatedCard(
             modifier = Modifier.fillMaxWidth(),
             elevation = CardDefaults.elevatedCardElevation()
         ) {
-            Column(Modifier.padding(16.dp)) {
-                Text("CBZ to PDF", fontWeight = FontWeight.SemiBold)
+            Column(Modifier.padding(8.dp)) {
+                Text("Manga Selection", fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(8.dp))
+                if (mihonDirectoryUri != null) {
+                    MangaToggleList(
+                        manga = mihonManga,
+                        selectedUris = selectedFilesUri,
+                        onToggle = { viewModel.toggleFileSelection(it) }
+                    )
+                } else {
+                    Text("Select a Mihon directory above")
+                }
+            }
+        }
 
-                Text(text = "Selected File(s):")
-                Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.height(16.dp))
+
+        // ===== SELECTED FILES =====
+        ElevatedCard(
+            modifier = Modifier.fillMaxWidth(),
+            elevation = CardDefaults.elevatedCardElevation()
+        ) {
+            Column(Modifier.padding(8.dp)) {
+                Text("Selected File(s)", fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(8.dp))
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors()
@@ -137,20 +158,8 @@ fun MihonMode(
                         text = selectedSummary,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(12.dp)
+                            .padding(8.dp)
                     )
-                }
-
-                Spacer(Modifier.height(12.dp))
-
-                if (mihonDirectoryUri != null) {
-                    MangaToggleList(
-                        manga = mihonManga,
-                        selectedUris = selectedFilesUri,
-                        onToggle = { viewModel.toggleFileSelection(it) }
-                    )
-                } else {
-                    Text("Select a Mihon directory above")
                 }
 
                 Spacer(Modifier.height(12.dp))
@@ -172,7 +181,7 @@ fun MihonMode(
         ) {
             var expanded by rememberSaveable { mutableStateOf(true) } // collapsible section
 
-            Column(Modifier.padding(16.dp)) {
+            Column(Modifier.padding(8.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
@@ -256,6 +265,16 @@ fun MihonMode(
 
                         Spacer12Divider()
 
+                        // Autonaming with chapters — instant toggle
+                        ConfigSwitchItem(
+                            title = "Autonaming with Chapters",
+                            infoText = "Automatically name outputs using chapter numbers.",
+                            checked = autoNameWithChapters,
+                            enabled = !isCurrentlyConverting
+                        ) { viewModel.toggleAutoNameWithChapters(it) }
+
+                        Spacer12Divider()
+
                         // File name override — auto apply as the user types.
                         // IMPORTANT: if empty => send empty string to VM to mean "no override" (fallback to default name).
                         var editingName by remember(overrideFileName) { mutableStateOf(overrideFileName) }
@@ -299,7 +318,7 @@ fun MihonMode(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp),
+                    .padding(8.dp),
                 horizontalAlignment = Alignment.Start
             ) {
                 // Decide color for task status
@@ -368,37 +387,52 @@ private fun MangaToggleList(
     ) {
         items(manga) { entry ->
             var expanded by rememberSaveable { mutableStateOf(false) }
-            Column {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { expanded = !expanded },
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(entry.name, modifier = Modifier.weight(1f))
-                    Icon(
-                        imageVector = if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
-                        contentDescription = if (expanded) "Collapse" else "Expand"
-                    )
-                }
-                AnimatedVisibility(
-                    visible = expanded,
-                    enter = expandVertically(),
-                    exit = shrinkVertically()
-                ) {
-                    Column(Modifier.padding(start = 16.dp)) {
-                        entry.files.forEach { file ->
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Checkbox(
-                                    checked = selectedUris.contains(file.uri),
-                                    onCheckedChange = { onToggle(file.uri) }
-                                )
-                                Text(file.name)
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp),
+                shape = CardDefaults.shape
+            ) {
+                Column(Modifier.padding(8.dp)) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { expanded = !expanded },
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            entry.name,
+                            modifier = Modifier.weight(1f),
+                            maxLines = 3,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Icon(
+                            imageVector = if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                            contentDescription = if (expanded) "Collapse" else "Expand"
+                        )
+                    }
+                    AnimatedVisibility(
+                        visible = expanded,
+                        enter = expandVertically(),
+                        exit = shrinkVertically()
+                    ) {
+                        Column(Modifier.padding(start = 16.dp)) {
+                            entry.files.forEach { file ->
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Checkbox(
+                                        checked = selectedUris.contains(file.uri),
+                                        onCheckedChange = { onToggle(file.uri) }
+                                    )
+                                    Text(
+                                        file.name,
+                                        maxLines = 3,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
                             }
                         }
                     }
                 }
-                Divider()
             }
         }
     }

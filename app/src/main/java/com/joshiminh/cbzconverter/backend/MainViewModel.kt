@@ -80,6 +80,9 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
     private val _compressOutputPdf = MutableStateFlow(false)
     val compressOutputPdf = _compressOutputPdf.asStateFlow()
 
+    private val _autoNameWithChapters = MutableStateFlow(false)
+    val autoNameWithChapters = _autoNameWithChapters.asStateFlow()
+
     private val _mihonDirectoryUri = MutableStateFlow<Uri?>(null)
     val mihonDirectoryUri = _mihonDirectoryUri.asStateFlow()
 
@@ -105,6 +108,10 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
 
     fun toggleCompressOutputPdf(newValue: Boolean) {
         _compressOutputPdf.update { newValue }
+    }
+
+    fun toggleAutoNameWithChapters(newValue: Boolean) {
+        _autoNameWithChapters.update { newValue }
     }
 
     fun updateMihonDirectoryUri(newUri: Uri) {
