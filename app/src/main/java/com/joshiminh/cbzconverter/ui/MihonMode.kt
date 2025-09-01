@@ -42,7 +42,9 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -81,10 +83,21 @@ fun MihonMode(
     autoNameWithChapters: Boolean,
     directoryPickerLauncher: ManagedActivityResultLauncher<Uri?, Uri?>,
     mihonDirectoryUri: Uri?,
+    isLoadingMihonManga: Boolean,
+    mihonLoadProgress: Float,
     onSelectMihonDirectory: () -> Unit
 ) {
     val focusManager: FocusManager = LocalFocusManager.current
     val canMerge = viewModel.areSelectedFilesFromSameParent()
+
+    // Automatically refresh the Mihon manga list whenever a directory has been
+    // previously selected (e.g. on app reopen). This avoids requiring the user to
+    // reselect the directory each time the screen is opened.
+    LaunchedEffect(mihonDirectoryUri) {
+        if (mihonDirectoryUri != null) {
+            viewModel.refreshMihonManga()
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -124,6 +137,13 @@ fun MihonMode(
                 Text("Manga Selection", fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(8.dp))
                 if (mihonDirectoryUri != null) {
+                    if (isLoadingMihonManga) {
+                        LinearProgressIndicator(
+                            progress = mihonLoadProgress,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Spacer(Modifier.height(8.dp))
+                    }
                     var searchQuery by rememberSaveable { mutableStateOf("") }
                     OutlinedTextField(
                         value = searchQuery,
