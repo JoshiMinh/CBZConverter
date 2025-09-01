@@ -37,7 +37,9 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
         private const val NO_FILE_SELECTED = "No file"
         const val EMPTY_STRING = ""
         private const val DEFAULT_MAX_NUMBER_OF_PAGES = 10_000
-        private const val DEFAULT_BATCH_SIZE = 300
+        // Lowered default to ensure large merges (200+ pages) use batch processing
+        // to avoid running out of memory during conversion.
+        private const val DEFAULT_BATCH_SIZE = 200
         private const val PREF_MIHON_DIR = "mihon_directory"
     }
 
@@ -89,6 +91,12 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
 
     private val _mihonMangaEntries = MutableStateFlow<List<MihonMangaEntry>>(emptyList())
     val mihonMangaEntries = _mihonMangaEntries.asStateFlow()
+
+    private val _isLoadingMihonManga = MutableStateFlow(false)
+    val isLoadingMihonManga = _isLoadingMihonManga.asStateFlow()
+
+    private val _mihonLoadProgress = MutableStateFlow(0f)
+    val mihonLoadProgress = _mihonLoadProgress.asStateFlow()
 
     init {
         contextHelper.getPreferences().getString(PREF_MIHON_DIR, null)?.let {
@@ -209,27 +217,40 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
         }
     }
 
-    private fun refreshMihonManga() {
+    /**
+     * Reload the Mihon manga list from the previously selected directory. Exposed
+     * publicly so the UI can trigger a refresh when the screen is revisited.
+     */
+    fun refreshMihonManga() {
         val rootUri = _mihonDirectoryUri.value ?: return
         viewModelScope.launch(Dispatchers.IO) {
-            val ctx = contextHelper.getContext()
-            val root = DocumentFile.fromTreeUri(ctx, rootUri) ?: return@launch
-            val downloads = root.findFile("downloads") ?: return@launch
+            _isLoadingMihonManga.value = true
+            _mihonLoadProgress.value = 0f
+            try {
+                val ctx = contextHelper.getContext()
+                val root = DocumentFile.fromTreeUri(ctx, rootUri) ?: return@launch
+                val downloads = root.findFile("downloads") ?: return@launch
 
-            val result = mutableListOf<MihonMangaEntry>()
-            downloads.listFiles().forEach { extension ->
-                if (!extension.isDirectory) return@forEach
-                extension.listFiles().forEach { manga ->
-                    if (!manga.isDirectory) return@forEach
+                val extensionDirs = downloads.listFiles().filter { it.isDirectory }
+                val mangaDirs = extensionDirs.flatMap { ext ->
+                    ext.listFiles().filter { it.isDirectory }
+                }
+                val total = mangaDirs.size.takeIf { it > 0 } ?: 1
+
+                val result = mutableListOf<MihonMangaEntry>()
+                mangaDirs.forEachIndexed { index, manga ->
                     val cbzFiles = manga.listFiles()
                         .filter { !it.isDirectory && it.name?.endsWith(".cbz", true) == true }
                         .map { MihonCbzFile(it.name ?: "Unknown", it.uri) }
                     if (cbzFiles.isNotEmpty()) {
                         result.add(MihonMangaEntry(manga.name ?: "Unknown", cbzFiles))
                     }
+                    _mihonLoadProgress.value = (index + 1) / total.toFloat()
                 }
+                _mihonMangaEntries.value = result.sortedBy { it.name.lowercase() }
+            } finally {
+                _isLoadingMihonManga.value = false
             }
-            _mihonMangaEntries.value = result.sortedBy { it.name.lowercase() }
         }
     }
 
@@ -426,16 +447,27 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
     }
 
     private fun extractChapterNumber(name: String): String? {
-        val match = Regex("(\\d+)(?!.*\\d)").find(name)
+        val match = Regex("(\\d+(?:[.,]\\d+)?)(?!.*\\d)").find(name)
         return match?.value
     }
 
     private fun getPdfFileNames(filesUri: List<Uri>): List<String> {
         val ctx = contextHelper.getContext()
         val baseNames = filesUri.map { it.getFileName() }
+        val baseNamesNoExt = baseNames.map { it.substringBeforeLast('.', it) }
+        // Try to resolve the manga name from the parent folder of each CBZ file. If
+        // the parent folder cannot be resolved (e.g. when using a non-DocumentFile
+        // URI), fall back to deriving the name from the Uri path segments before
+        // ultimately defaulting to the CBZ file name without extension.
         val mangaNames = filesUri.mapIndexed { index, uri ->
             DocumentFile.fromSingleUri(ctx, uri)?.parentFile?.name
-                ?: baseNames[index].substringBeforeLast('.', baseNames[index])
+                ?: uri.pathSegments.dropLast(1).lastOrNull()
+                ?: baseNamesNoExt[index]
+        }
+        val chapters = if (_autoNameWithChapters.value) {
+            baseNamesNoExt.map { extractChapterNumber(it) }
+        } else {
+            List(baseNamesNoExt.size) { null }
         }
 
         val chosenCbzNames: MutableList<String> = when {
@@ -456,19 +488,36 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
             else -> {
                 filesUri.mapIndexed { index, _ ->
                     val mangaName = mangaNames[index]
-                    val baseNameNoExt = baseNames[index].substringBeforeLast('.', baseNames[index])
-                    val chapter = if (_autoNameWithChapters.value) {
-                        extractChapterNumber(baseNameNoExt)
-                    } else null
+                    val chapter = chapters[index]
                     val suffix = when {
-                        chapter != null -> " - $chapter"
+                        chapter != null -> "_${chapter}"
                         filesUri.size == 1 -> ""
-                        else -> " - ${index + 1}"
+                        else -> "_${index + 1}"
                     }
                     "$mangaName$suffix.cbz"
                 }.toMutableList().apply {
                     if (_overrideMergeFiles.value && areSelectedFilesFromSameParent()) {
-                        this[0] = "${mangaNames.first()}.cbz"
+                        val base = mangaNames.first()
+                        if (_autoNameWithChapters.value) {
+                            val chapterPairs = chapters.mapIndexedNotNull { _, ch ->
+                                val numeric = ch?.replace(',', '.')?.toDoubleOrNull()
+                                if (numeric != null) numeric to ch else null
+                            }
+                            if (chapterPairs.isNotEmpty()) {
+                                val minPair = chapterPairs.minByOrNull { it.first }!!
+                                val maxPair = chapterPairs.maxByOrNull { it.first }!!
+                                val rangeSuffix = if (minPair == maxPair) {
+                                    "_${minPair.second}"
+                                } else {
+                                    "_${minPair.second}-${maxPair.second}"
+                                }
+                                this[0] = "$base$rangeSuffix.cbz"
+                            } else {
+                                this[0] = "$base.cbz"
+                            }
+                        } else {
+                            this[0] = "$base.cbz"
+                        }
                     }
                 }
             }

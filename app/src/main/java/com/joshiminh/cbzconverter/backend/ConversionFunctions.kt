@@ -482,7 +482,7 @@ private fun addEntriesToZip(
                 val currentFileUniqueName = "${formattedIndex}_${fileName}_${zipEntry.name}"
 
                 zipOutputStream.putNextEntry(ZipEntry(currentFileUniqueName))
-                zipFile.getInputStream(zipEntry).copyTo(zipOutputStream)
+                zipFile.getInputStream(zipEntry).use { it.copyTo(zipOutputStream) }
                 zipOutputStream.closeEntry()
                 zipOutputStream.flush()
             } catch (e: Exception) {

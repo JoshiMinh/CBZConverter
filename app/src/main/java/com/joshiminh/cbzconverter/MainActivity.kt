@@ -122,6 +122,8 @@ private fun MainApp(
             val autoNameWithChapters by viewModel.autoNameWithChapters.collectAsState()
             val mihonDirectoryUri by viewModel.mihonDirectoryUri.collectAsState()
             val mihonMangaEntries by viewModel.mihonMangaEntries.collectAsState()
+            val isLoadingMihonManga by viewModel.isLoadingMihonManga.collectAsState()
+            val mihonLoadProgress by viewModel.mihonLoadProgress.collectAsState()
 
             val directoryPickerLauncher =
                 rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri: Uri? ->
@@ -170,6 +172,8 @@ private fun MainApp(
                         autoNameWithChapters = autoNameWithChapters,
                         directoryPickerLauncher = directoryPickerLauncher,
                         mihonDirectoryUri = mihonDirectoryUri,
+                        isLoadingMihonManga = isLoadingMihonManga,
+                        mihonLoadProgress = mihonLoadProgress,
                         onSelectMihonDirectory = {
                             viewModel.checkPermissionAndSelectDirectoryAction(activity, mihonDirectoryPickerLauncher)
                         }
