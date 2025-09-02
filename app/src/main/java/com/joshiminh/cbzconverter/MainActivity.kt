@@ -101,151 +101,175 @@ private fun MainApp(
             }
         }
 
-        Screen.MIHON -> {
-            val isCurrentlyConverting by viewModel.isCurrentlyConverting.collectAsState()
-            val currentTaskStatus by viewModel.currentTaskStatus.collectAsState()
-            val currentSubTaskStatus by viewModel.currentSubTaskStatus.collectAsState()
+        Screen.MIHON -> MihonScreen(
+            activity = activity,
+            viewModel = viewModel,
+            onBack = { currentScreen = Screen.HOME }
+        )
 
-            val selectedFileName by viewModel.selectedFileName.collectAsState()
-            val selectedFilesUri by viewModel.selectedFileUri.collectAsState()
+        Screen.NORMAL -> NormalScreen(
+            activity = activity,
+            viewModel = viewModel,
+            onBack = { currentScreen = Screen.HOME }
+        )
+    }
+}
 
-            val maxNumberOfPages by viewModel.maxNumberOfPages.collectAsState()
-            val batchSize by viewModel.batchSize.collectAsState()
-            val overrideSortOrderToUseOffset by viewModel.overrideSortOrderToUseOffset.collectAsState()
-            val overrideMergeFiles by viewModel.overrideMergeFiles.collectAsState()
-            val overrideFileName by viewModel.overrideFileName.collectAsState()
-            val overrideOutputDirectoryUri by viewModel.overrideOutputDirectoryUri.collectAsState()
-            val compressOutputPdf by viewModel.compressOutputPdf.collectAsState()
-            val autoNameWithChapters by viewModel.autoNameWithChapters.collectAsState()
-            val mihonDirectoryUri by viewModel.mihonDirectoryUri.collectAsState()
-            val mihonMangaEntries by viewModel.mihonMangaEntries.collectAsState()
-            val isLoadingMihonManga by viewModel.isLoadingMihonManga.collectAsState()
-            val mihonLoadProgress by viewModel.mihonLoadProgress.collectAsState()
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MihonScreen(
+    activity: ComponentActivity,
+    viewModel: MainViewModel,
+    onBack: () -> Unit
+) {
+    val isCurrentlyConverting by viewModel.isCurrentlyConverting.collectAsState()
+    val currentTaskStatus by viewModel.currentTaskStatus.collectAsState()
+    val currentSubTaskStatus by viewModel.currentSubTaskStatus.collectAsState()
 
-            val directoryPickerLauncher =
-                rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri: Uri? ->
-                    uri?.let { viewModel.updateOverrideOutputPathFromUserInput(it) }
-                }
+    val selectedFileName by viewModel.selectedFileName.collectAsState()
+    val selectedFilesUri by viewModel.selectedFileUri.collectAsState()
 
-            val mihonDirectoryPickerLauncher =
-                rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri: Uri? ->
-                    uri?.let { viewModel.updateMihonDirectoryUri(it) }
-                }
+    val maxNumberOfPages by viewModel.maxNumberOfPages.collectAsState()
+    val batchSize by viewModel.batchSize.collectAsState()
+    val overrideSortOrderToUseOffset by viewModel.overrideSortOrderToUseOffset.collectAsState()
+    val overrideMergeFiles by viewModel.overrideMergeFiles.collectAsState()
+    val overrideFileName by viewModel.overrideFileName.collectAsState()
+    val overrideOutputDirectoryUri by viewModel.overrideOutputDirectoryUri.collectAsState()
+    val compressOutputPdf by viewModel.compressOutputPdf.collectAsState()
+    val autoNameWithChapters by viewModel.autoNameWithChapters.collectAsState()
+    val mihonDirectoryUri by viewModel.mihonDirectoryUri.collectAsState()
+    val mihonMangaEntries by viewModel.mihonMangaEntries.collectAsState()
+    val isLoadingMihonManga by viewModel.isLoadingMihonManga.collectAsState()
+    val mihonLoadProgress by viewModel.mihonLoadProgress.collectAsState()
 
-            Scaffold(
-                topBar = {
-                    TopAppBar(
-                        title = { Text("Mihon Mode") },
-                        navigationIcon = {
-                            IconButton(onClick = { currentScreen = Screen.HOME }) {
-                                Icon(imageVector = Icons.Filled.ArrowBack, contentDescription = "Back")
-                            }
-                        }
-                    )
-                }
-            ) { inner ->
-                Column(
-                    modifier = Modifier
-                        .padding(inner)
-                        .fillMaxSize()
-                        .padding(16.dp)
-                ) {
-                    MihonMode(
-                        selectedFileName = selectedFileName,
-                        viewModel = viewModel,
-                        activity = activity,
-                        isCurrentlyConverting = isCurrentlyConverting,
-                        selectedFilesUri = selectedFilesUri,
-                        mihonManga = mihonMangaEntries,
-                        currentTaskStatus = currentTaskStatus,
-                        currentSubTaskStatus = currentSubTaskStatus,
-                        maxNumberOfPages = maxNumberOfPages,
-                        batchSize = batchSize,
-                        overrideSortOrderToUseOffset = overrideSortOrderToUseOffset,
-                        overrideMergeFiles = overrideMergeFiles,
-                        overrideFileName = overrideFileName,
-                        overrideOutputDirectoryUri = overrideOutputDirectoryUri,
-                        compressOutputPdf = compressOutputPdf,
-                        autoNameWithChapters = autoNameWithChapters,
-                        directoryPickerLauncher = directoryPickerLauncher,
-                        mihonDirectoryUri = mihonDirectoryUri,
-                        isLoadingMihonManga = isLoadingMihonManga,
-                        mihonLoadProgress = mihonLoadProgress,
-                        onSelectMihonDirectory = {
-                            viewModel.checkPermissionAndSelectDirectoryAction(
-                                activity,
-                                mihonDirectoryPickerLauncher
-                            )
-                        }
-                    )
-                }
-            }
+    val directoryPickerLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri: Uri? ->
+            uri?.let { viewModel.updateOverrideOutputPathFromUserInput(it) }
         }
 
-        Screen.NORMAL -> {
-            val isCurrentlyConverting by viewModel.isCurrentlyConverting.collectAsState()
-            val currentTaskStatus by viewModel.currentTaskStatus.collectAsState()
-            val currentSubTaskStatus by viewModel.currentSubTaskStatus.collectAsState()
+    val mihonDirectoryPickerLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri: Uri? ->
+            uri?.let { viewModel.updateMihonDirectoryUri(it) }
+        }
 
-            val selectedFileName by viewModel.selectedFileName.collectAsState()
-            val selectedFilesUri by viewModel.selectedFileUri.collectAsState()
-
-            val maxNumberOfPages by viewModel.maxNumberOfPages.collectAsState()
-            val batchSize by viewModel.batchSize.collectAsState()
-            val overrideSortOrderToUseOffset by viewModel.overrideSortOrderToUseOffset.collectAsState()
-            val overrideMergeFiles by viewModel.overrideMergeFiles.collectAsState()
-            val overrideFileName by viewModel.overrideFileName.collectAsState()
-            val overrideOutputDirectoryUri by viewModel.overrideOutputDirectoryUri.collectAsState()
-            val compressOutputPdf by viewModel.compressOutputPdf.collectAsState()
-
-            val filePickerLauncher =
-                rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris: List<Uri> ->
-                    if (uris.isNotEmpty()) viewModel.updateUpdateSelectedFileUriFromUserInput(uris)
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Mihon Mode") },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(imageVector = Icons.Filled.ArrowBack, contentDescription = "Back")
+                    }
                 }
-
-            val directoryPickerLauncher =
-                rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri: Uri? ->
-                    uri?.let { viewModel.updateOverrideOutputPathFromUserInput(it) }
-                }
-
-            Scaffold(
-                topBar = {
-                    TopAppBar(
-                        title = { Text("Normal Mode") },
-                        navigationIcon = {
-                            IconButton(onClick = { currentScreen = Screen.HOME }) {
-                                Icon(imageVector = Icons.Filled.ArrowBack, contentDescription = "Back")
-                            }
-                        }
+            )
+        }
+    ) { inner ->
+        Column(
+            modifier = Modifier
+                .padding(inner)
+                .fillMaxSize()
+                .padding(16.dp)
+        ) {
+            MihonMode(
+                selectedFileName = selectedFileName,
+                viewModel = viewModel,
+                activity = activity,
+                isCurrentlyConverting = isCurrentlyConverting,
+                selectedFilesUri = selectedFilesUri,
+                mihonManga = mihonMangaEntries,
+                currentTaskStatus = currentTaskStatus,
+                currentSubTaskStatus = currentSubTaskStatus,
+                maxNumberOfPages = maxNumberOfPages,
+                batchSize = batchSize,
+                overrideSortOrderToUseOffset = overrideSortOrderToUseOffset,
+                overrideMergeFiles = overrideMergeFiles,
+                overrideFileName = overrideFileName,
+                overrideOutputDirectoryUri = overrideOutputDirectoryUri,
+                compressOutputPdf = compressOutputPdf,
+                autoNameWithChapters = autoNameWithChapters,
+                directoryPickerLauncher = directoryPickerLauncher,
+                mihonDirectoryUri = mihonDirectoryUri,
+                isLoadingMihonManga = isLoadingMihonManga,
+                mihonLoadProgress = mihonLoadProgress,
+                onSelectMihonDirectory = {
+                    viewModel.checkPermissionAndSelectDirectoryAction(
+                        activity,
+                        mihonDirectoryPickerLauncher
                     )
                 }
-            ) { inner ->
-                Column(
-                    modifier = Modifier
-                        .padding(inner)
-                        .fillMaxSize()
-                        .padding(16.dp)
-                ) {
-                    NormalMode(
-                        selectedFileName = selectedFileName,
-                        viewModel = viewModel,
-                        activity = activity,
-                        filePickerLauncher = filePickerLauncher,
-                        isCurrentlyConverting = isCurrentlyConverting,
-                        selectedFilesUri = selectedFilesUri,
-                        currentTaskStatus = currentTaskStatus,
-                        currentSubTaskStatus = currentSubTaskStatus,
-                        maxNumberOfPages = maxNumberOfPages,
-                        batchSize = batchSize,
-                        overrideSortOrderToUseOffset = overrideSortOrderToUseOffset,
-                        overrideMergeFiles = overrideMergeFiles,
-                        overrideFileName = overrideFileName,
-                        overrideOutputDirectoryUri = overrideOutputDirectoryUri,
-                        compressOutputPdf = compressOutputPdf,
-                        directoryPickerLauncher = directoryPickerLauncher
-                    )
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun NormalScreen(
+    activity: ComponentActivity,
+    viewModel: MainViewModel,
+    onBack: () -> Unit
+) {
+    val isCurrentlyConverting by viewModel.isCurrentlyConverting.collectAsState()
+    val currentTaskStatus by viewModel.currentTaskStatus.collectAsState()
+    val currentSubTaskStatus by viewModel.currentSubTaskStatus.collectAsState()
+
+    val selectedFileName by viewModel.selectedFileName.collectAsState()
+    val selectedFilesUri by viewModel.selectedFileUri.collectAsState()
+
+    val maxNumberOfPages by viewModel.maxNumberOfPages.collectAsState()
+    val batchSize by viewModel.batchSize.collectAsState()
+    val overrideSortOrderToUseOffset by viewModel.overrideSortOrderToUseOffset.collectAsState()
+    val overrideMergeFiles by viewModel.overrideMergeFiles.collectAsState()
+    val overrideFileName by viewModel.overrideFileName.collectAsState()
+    val overrideOutputDirectoryUri by viewModel.overrideOutputDirectoryUri.collectAsState()
+    val compressOutputPdf by viewModel.compressOutputPdf.collectAsState()
+
+    val filePickerLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris: List<Uri> ->
+            if (uris.isNotEmpty()) viewModel.updateUpdateSelectedFileUriFromUserInput(uris)
+        }
+
+    val directoryPickerLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri: Uri? ->
+            uri?.let { viewModel.updateOverrideOutputPathFromUserInput(it) }
+        }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Normal Mode") },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(imageVector = Icons.Filled.ArrowBack, contentDescription = "Back")
+                    }
                 }
-            }
+            )
+        }
+    ) { inner ->
+        Column(
+            modifier = Modifier
+                .padding(inner)
+                .fillMaxSize()
+                .padding(16.dp)
+        ) {
+            NormalMode(
+                selectedFileName = selectedFileName,
+                viewModel = viewModel,
+                activity = activity,
+                filePickerLauncher = filePickerLauncher,
+                isCurrentlyConverting = isCurrentlyConverting,
+                selectedFilesUri = selectedFilesUri,
+                currentTaskStatus = currentTaskStatus,
+                currentSubTaskStatus = currentSubTaskStatus,
+                maxNumberOfPages = maxNumberOfPages,
+                batchSize = batchSize,
+                overrideSortOrderToUseOffset = overrideSortOrderToUseOffset,
+                overrideMergeFiles = overrideMergeFiles,
+                overrideFileName = overrideFileName,
+                overrideOutputDirectoryUri = overrideOutputDirectoryUri,
+                compressOutputPdf = compressOutputPdf,
+                directoryPickerLauncher = directoryPickerLauncher
+            )
         }
     }
 }
