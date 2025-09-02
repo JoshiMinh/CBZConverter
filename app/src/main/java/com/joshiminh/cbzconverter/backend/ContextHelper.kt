@@ -36,8 +36,19 @@ class ContextHelper(private val context: Context) {
         // Try DocumentFileCompat (works with SAF Uris, including tree/document)
         DocumentFileCompat.fromUri(context, uri)?.name?.let { return it }
 
-        // Last-resort: last path segment
-        return uri.lastPathSegment?.substringAfterLast('/') ?: "Unknown"
+        // Last-resort: try to infer a filename from the raw path. Some SAF
+        // providers (e.g. Downloads) expose generic "document" names via
+        // `lastPathSegment`, but the encoded path still contains the real file
+        // name. Decode and strip any directories or colon prefixes to recover
+        // something meaningful for the user.
+        uri.path?.let { rawPath ->
+            val decoded = java.net.URLDecoder.decode(rawPath, Charsets.UTF_8.name())
+            decoded.substringAfterLast('/')
+                .substringAfterLast(':')
+                .takeIf { it.isNotBlank() }?.let { return it }
+        }
+
+        return "Unknown"
     }
 
     /** Show a toast with a default SHORT length. */

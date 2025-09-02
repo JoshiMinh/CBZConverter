@@ -13,6 +13,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -39,10 +40,11 @@ import androidx.compose.material3.Divider
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -102,124 +104,103 @@ fun MihonMode(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 8.dp, vertical = 16.dp)
+            .padding(horizontal = 16.dp, vertical = 24.dp)
             .verticalScroll(rememberScrollState()),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         // ===== MIHON DIRECTORY SELECTION =====
-        ElevatedCard(
-            modifier = Modifier.fillMaxWidth(),
-            elevation = CardDefaults.elevatedCardElevation()
-        ) {
-            Column(Modifier.padding(8.dp)) {
-                Text("Select Mihon Directory", fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.height(8.dp))
-                Text(text = mihonDirectoryUri?.toString() ?: "None")
-                Spacer(Modifier.height(12.dp))
-                Button(
-                    onClick = onSelectMihonDirectory,
-                    enabled = !isCurrentlyConverting,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(if (mihonDirectoryUri == null) "Select Directory" else "Change Directory")
-                }
+        SectionCard(title = "Select Mihon Directory") {
+            Text(text = mihonDirectoryUri?.toString() ?: "None")
+            Spacer(Modifier.height(12.dp))
+            Button(
+                onClick = onSelectMihonDirectory,
+                enabled = !isCurrentlyConverting,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(if (mihonDirectoryUri == null) "Select Directory" else "Change Directory")
             }
         }
 
         Spacer(Modifier.height(16.dp))
 
         // ===== MANGA OPTIONS =====
-        ElevatedCard(
-            modifier = Modifier.fillMaxWidth(),
-            elevation = CardDefaults.elevatedCardElevation()
-        ) {
-            Column(Modifier.padding(8.dp)) {
-                Text("Manga Selection", fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.height(8.dp))
-                if (mihonDirectoryUri != null) {
-                    if (isLoadingMihonManga) {
-                        LinearProgressIndicator(
-                            progress = mihonLoadProgress,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        Spacer(Modifier.height(8.dp))
-                    }
-                    var searchQuery by rememberSaveable { mutableStateOf("") }
-                    OutlinedTextField(
-                        value = searchQuery,
-                        onValueChange = { searchQuery = it },
-                        label = { Text("Search") },
-                        singleLine = true,
+        SectionCard(title = "Manga Selection") {
+            if (mihonDirectoryUri != null) {
+                if (isLoadingMihonManga) {
+                    LinearProgressIndicator(
+                        progress = mihonLoadProgress,
                         modifier = Modifier.fillMaxWidth()
                     )
                     Spacer(Modifier.height(8.dp))
-                    val filtered = remember(mihonManga, searchQuery) {
-                        if (searchQuery.isBlank()) {
-                            mihonManga
+                }
+                var searchQuery by rememberSaveable { mutableStateOf("") }
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    label = { Text("Search") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(8.dp))
+                val filtered = remember(mihonManga, searchQuery) {
+                    if (searchQuery.isBlank()) {
+                        mihonManga
+                    } else {
+                        val regex = runCatching { Regex(searchQuery, RegexOption.IGNORE_CASE) }.getOrNull()
+                        if (regex != null) {
+                            mihonManga.filter { regex.containsMatchIn(it.name) }
                         } else {
-                            val regex = runCatching { Regex(searchQuery, RegexOption.IGNORE_CASE) }.getOrNull()
-                            if (regex != null) {
-                                mihonManga.filter { regex.containsMatchIn(it.name) }
-                            } else {
-                                val lower = searchQuery.lowercase()
-                                mihonManga.filter { it.name.lowercase().contains(lower) }
-                            }
+                            val lower = searchQuery.lowercase()
+                            mihonManga.filter { it.name.lowercase().contains(lower) }
                         }
                     }
-                    MangaToggleList(
-                        manga = filtered,
-                        selectedUris = selectedFilesUri,
-                        onToggle = { viewModel.toggleFileSelection(it) }
-                    )
-                } else {
-                    Text("Select a Mihon directory above")
                 }
+                MangaToggleList(
+                    manga = filtered,
+                    selectedUris = selectedFilesUri,
+                    onToggle = { viewModel.toggleFileSelection(it) }
+                )
+            } else {
+                Text("Select a Mihon directory above")
             }
         }
 
         Spacer(Modifier.height(16.dp))
 
         // ===== SELECTED FILES =====
-        ElevatedCard(
-            modifier = Modifier.fillMaxWidth(),
-            elevation = CardDefaults.elevatedCardElevation()
-        ) {
-            Column(Modifier.padding(8.dp)) {
-                Text("Selected File(s)", fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.height(8.dp))
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors()
-                ) {
-                    val selectedSummary =
-                        if (selectedFilesUri.size > 1 && selectedFileName.isNotBlank())
-                            "$selectedFileName  (+${selectedFilesUri.size - 1} more)"
-                        else selectedFileName.ifBlank { "None" }
+        SectionCard(title = "Selected File(s)") {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors()
+            ) {
+                val selectedSummary =
+                    if (selectedFilesUri.size > 1 && selectedFileName.isNotBlank())
+                        "$selectedFileName  (+${selectedFilesUri.size - 1} more)"
+                    else selectedFileName.ifBlank { "None" }
 
-                    Text(
-                        text = selectedSummary,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(8.dp)
-                    )
-                }
-
-                Spacer(Modifier.height(12.dp))
-
-                Button(
-                    onClick = { if (selectedFilesUri.isNotEmpty()) viewModel.convertToPDF(selectedFilesUri) },
-                    enabled = selectedFilesUri.isNotEmpty() && !isCurrentlyConverting,
-                    modifier = Modifier.fillMaxWidth()
-                ) { Text("Convert to PDF") }
-
-                Spacer(Modifier.height(8.dp))
-
-                Button(
-                    onClick = { if (selectedFilesUri.isNotEmpty()) viewModel.convertToEPUB(selectedFilesUri) },
-                    enabled = selectedFilesUri.isNotEmpty() && !isCurrentlyConverting,
-                    modifier = Modifier.fillMaxWidth()
-                ) { Text("Convert to EPUB") }
+                Text(
+                    text = selectedSummary,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(8.dp)
+                )
             }
+
+            Spacer(Modifier.height(12.dp))
+
+            Button(
+                onClick = { if (selectedFilesUri.isNotEmpty()) viewModel.convertToPDF(selectedFilesUri) },
+                enabled = selectedFilesUri.isNotEmpty() && !isCurrentlyConverting,
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("Convert to PDF") }
+
+            Spacer(Modifier.height(8.dp))
+
+            Button(
+                onClick = { if (selectedFilesUri.isNotEmpty()) viewModel.convertToEPUB(selectedFilesUri) },
+                enabled = selectedFilesUri.isNotEmpty() && !isCurrentlyConverting,
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("Convert to EPUB") }
         }
 
         Spacer(Modifier.height(16.dp))
@@ -231,13 +212,14 @@ fun MihonMode(
         ) {
             var expanded by rememberSaveable { mutableStateOf(true) } // collapsible section
 
-            Column(Modifier.padding(8.dp)) {
+            Column(Modifier.padding(16.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
                         "Configurations",
+                        style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.weight(1f)
                     )
@@ -361,39 +343,29 @@ fun MihonMode(
         Spacer(Modifier.height(16.dp))
 
         // ===== STATUS =====
-        ElevatedCard(
-            modifier = Modifier.fillMaxWidth(),
-            elevation = CardDefaults.elevatedCardElevation()
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(8.dp),
-                horizontalAlignment = Alignment.Start
-            ) {
-                // Decide color for task status
-                val taskColor = when {
-                    currentTaskStatus.contains("Completed", ignoreCase = true) ||
-                            currentTaskStatus.contains("Created", ignoreCase = true)  -> androidx.compose.ui.graphics.Color(0xFF4CAF50) // light green
-                    currentTaskStatus.contains("Failed", ignoreCase = true) ||
-                            currentTaskStatus.contains("Error", ignoreCase = true)   -> androidx.compose.ui.graphics.Color(0xFFF44336) // red
-                    else -> androidx.compose.ui.graphics.Color.Unspecified
-                }
+        SectionCard(title = "Status") {
+            // Decide color for task status
+            val taskColor = when {
+                currentTaskStatus.contains("Completed", ignoreCase = true) ||
+                        currentTaskStatus.contains("Created", ignoreCase = true)  -> androidx.compose.ui.graphics.Color(0xFF4CAF50) // light green
+                currentTaskStatus.contains("Failed", ignoreCase = true) ||
+                        currentTaskStatus.contains("Error", ignoreCase = true)   -> androidx.compose.ui.graphics.Color(0xFFF44336) // red
+                else -> androidx.compose.ui.graphics.Color.Unspecified
+            }
 
-                // Progress + Current Task inline
-                Text(
-                    text = "Progress: $currentTaskStatus",
-                    fontWeight = FontWeight.SemiBold,
-                    color = taskColor
-                )
+            // Progress + Current Task inline
+            Text(
+                text = "Progress: $currentTaskStatus",
+                fontWeight = FontWeight.SemiBold,
+                color = taskColor
+            )
 
-                Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(8.dp))
 
-                // Show sub-task lines below
-                LazyColumn(Modifier.height(130.dp)) {
-                    items(currentSubTaskStatus.lines()) { line ->
-                        Text(line)
-                    }
+            // Show sub-task lines below
+            LazyColumn(Modifier.height(130.dp)) {
+                items(currentSubTaskStatus.lines()) { line ->
+                    Text(line)
                 }
             }
         }
@@ -629,4 +601,22 @@ private fun ConfigButtonItem(
     Text(primaryText)
     Spacer(Modifier.height(8.dp))
     TextButton(onClick = onClick, enabled = enabled) { Text(buttonText) }
+}
+
+@Composable
+private fun SectionCard(
+    title: String,
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    ElevatedCard(
+        modifier = modifier.fillMaxWidth(),
+        elevation = CardDefaults.elevatedCardElevation()
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(12.dp))
+            content()
+        }
+    }
 }
