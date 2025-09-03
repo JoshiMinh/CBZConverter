@@ -56,12 +56,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusManager
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.joshiminh.cbzconverter.backend.MainViewModel
 import com.joshiminh.cbzconverter.backend.MihonMangaEntry
+import androidx.documentfile.provider.DocumentFile
 
 @Composable
 fun MihonMode(
@@ -89,7 +91,14 @@ fun MihonMode(
     onSelectMihonDirectory: () -> Unit
 ) {
     val focusManager: FocusManager = LocalFocusManager.current
+    val context = LocalContext.current
     val canMerge = viewModel.areSelectedFilesFromSameParent()
+
+    LaunchedEffect(selectedFilesUri) {
+        if (!canMerge && overrideMergeFiles) {
+            viewModel.toggleMergeFilesOverride(false)
+        }
+    }
 
     // Automatically refresh the Mihon manga list whenever a directory has been
     // previously selected (e.g. on app reopen). This avoids requiring the user to
@@ -172,10 +181,17 @@ fun MihonMode(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors()
             ) {
-                val selectedSummary =
-                    if (selectedFilesUri.size > 1 && selectedFileName.isNotBlank())
-                        "$selectedFileName  (+${selectedFilesUri.size - 1} more)"
-                    else selectedFileName.ifBlank { "None" }
+                val parentName = selectedFilesUri.firstOrNull()?.let { uri ->
+                    DocumentFile.fromSingleUri(context, uri)?.parentFile?.name
+                }
+                val selectedSummary = when {
+                    selectedFilesUri.isEmpty() -> "None"
+                    selectedFilesUri.size > 1 && !parentName.isNullOrBlank() ->
+                        "$parentName  (+${selectedFilesUri.size - 1} more)"
+                    !parentName.isNullOrBlank() -> parentName
+                    selectedFileName.isNotBlank() -> selectedFileName
+                    else -> "None"
+                }
 
                 Text(
                     text = selectedSummary,
@@ -291,6 +307,15 @@ fun MihonMode(
                             checked = overrideMergeFiles,
                             enabled = !isCurrentlyConverting && canMerge
                         ) { viewModel.toggleMergeFilesOverride(it) }
+
+                        if (!canMerge && selectedFilesUri.size > 1) {
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                "Cannot merge files from different manga.",
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
 
                         Spacer12Divider()
 
