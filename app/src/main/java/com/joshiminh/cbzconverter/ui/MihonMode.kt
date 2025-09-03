@@ -79,7 +79,6 @@ fun MihonMode(
     batchSize: Int,
     overrideSortOrderToUseOffset: Boolean,
     overrideMergeFiles: Boolean,
-    overrideFileName: String,
     overrideOutputDirectoryUri: Uri?,
     compressOutputPdf: Boolean,
     autoNameWithChapters: Boolean,
@@ -189,7 +188,11 @@ fun MihonMode(
             Spacer(Modifier.height(12.dp))
 
             Button(
-                onClick = { if (selectedFilesUri.isNotEmpty()) viewModel.convertToPDF(selectedFilesUri) },
+                onClick = {
+                    if (selectedFilesUri.isNotEmpty()) {
+                        viewModel.convertToPDF(selectedFilesUri, useParentDirectoryName = true)
+                    }
+                },
                 enabled = selectedFilesUri.isNotEmpty() && !isCurrentlyConverting,
                 modifier = Modifier.fillMaxWidth()
             ) { Text("Convert to PDF") }
@@ -197,7 +200,11 @@ fun MihonMode(
             Spacer(Modifier.height(8.dp))
 
             Button(
-                onClick = { if (selectedFilesUri.isNotEmpty()) viewModel.convertToEPUB(selectedFilesUri) },
+                onClick = {
+                    if (selectedFilesUri.isNotEmpty()) {
+                        viewModel.convertToEPUB(selectedFilesUri, useParentDirectoryName = true)
+                    }
+                },
                 enabled = selectedFilesUri.isNotEmpty() && !isCurrentlyConverting,
                 modifier = Modifier.fillMaxWidth()
             ) { Text("Convert to EPUB") }
@@ -304,24 +311,6 @@ fun MihonMode(
                             checked = autoNameWithChapters,
                             enabled = !isCurrentlyConverting
                         ) { viewModel.toggleAutoNameWithChapters(it) }
-
-                        Spacer12Divider()
-
-                        // File name override — auto apply as the user types.
-                        // IMPORTANT: if empty => send empty string to VM to mean "no override" (fallback to default name).
-                        var editingName by remember(overrideFileName) { mutableStateOf(overrideFileName) }
-                        ConfigTextItem(
-                            title = "Override Output Filename",
-                            infoText = "Set a custom output name (no extension). Leave blank to auto-name.",
-                            text = editingName,
-                            enabled = !isCurrentlyConverting && selectedFilesUri.isNotEmpty(),
-                            supportingText = "Current: ${overrideFileName.ifBlank { "— (default)" }}",
-                            onTextChange = { newText ->
-                                editingName = newText
-                                // Trim and push to VM immediately; blank => default behavior
-                                viewModel.updateOverrideFileNameFromUserInput(newText.trim())
-                            }
-                        )
 
                         Spacer12Divider()
 

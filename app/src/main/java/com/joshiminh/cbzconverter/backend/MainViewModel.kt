@@ -256,7 +256,7 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
 
     // ------------------------ Conversion Flow ------------------------
 
-    fun convertToPDF(fileUris: List<Uri>) {
+    fun convertToPDF(fileUris: List<Uri>, useParentDirectoryName: Boolean = false) {
         if (_overrideMergeFiles.value && !areSelectedFilesFromSameParent()) {
             appendTask("Merge disabled: files from different manga")
             contextHelper.showToast("Cannot merge files from different manga", Toast.LENGTH_LONG)
@@ -273,7 +273,10 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
 
             try {
                 val outputFolder = getOutputFolder()
-                val pdfFileNames = resolveFileNameConflicts(getPdfFileNames(fileUris), outputFolder)
+                val pdfFileNames = resolveFileNameConflicts(
+                    getPdfFileNames(fileUris, useParentDirectoryName),
+                    outputFolder
+                )
 
                 setTask("Converting...")
                 setSubTask("")
@@ -310,7 +313,7 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
         }
     }
 
-    fun convertToEPUB(fileUris: List<Uri>) {
+    fun convertToEPUB(fileUris: List<Uri>, useParentDirectoryName: Boolean = false) {
         if (_overrideMergeFiles.value && !areSelectedFilesFromSameParent()) {
             appendTask("Merge disabled: files from different manga")
             contextHelper.showToast("Cannot merge files from different manga", Toast.LENGTH_LONG)
@@ -326,7 +329,8 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
 
             try {
                 val outputFolder = getOutputFolder()
-                val epubBaseNames = getPdfFileNames(fileUris).map { it.replace(".pdf", ".epub", true) }
+                val epubBaseNames = getPdfFileNames(fileUris, useParentDirectoryName)
+                    .map { it.replace(".pdf", ".epub", true) }
                 val epubFileNames = resolveFileNameConflicts(epubBaseNames, outputFolder)
 
                 setTask("Converting to EPUB...")
@@ -451,14 +455,34 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
         return match?.value
     }
 
-    private fun getPdfFileNames(filesUri: List<Uri>): List<String> {
+    private fun getPdfFileNames(filesUri: List<Uri>, useParentDirectoryName: Boolean): List<String> {
         val ctx = contextHelper.getContext()
         val baseNames = filesUri.map { it.getFileName() }
         val baseNamesNoExt = baseNames.map { it.substringBeforeLast('.', it) }
-        // Try to resolve the manga name from the parent folder of each CBZ file. If
-        // the parent folder cannot be resolved (e.g. when using a non-DocumentFile
-        // URI), fall back to deriving the name from the Uri path segments before
-        // ultimately defaulting to the CBZ file name without extension.
+
+        if (!useParentDirectoryName) {
+            return when {
+                _overrideFileName.value.isNotBlank() && _overrideMergeFiles.value -> {
+                    mutableListOf("${_overrideFileName.value}.pdf").apply {
+                        if (filesUri.size > 1) {
+                            addAll(baseNamesNoExt.drop(1).map { "$it.pdf" })
+                        }
+                    }
+                }
+                _overrideFileName.value.isNotBlank() -> {
+                    if (filesUri.size == 1) {
+                        listOf("${_overrideFileName.value}.pdf")
+                    } else {
+                        List(filesUri.size) { index -> "${_overrideFileName.value}_${index + 1}.pdf" }
+                    }
+                }
+                else -> {
+                    baseNamesNoExt.map { "$it.pdf" }
+                }
+            }
+        }
+
+        // Use parent directory name as the base for output names
         val mangaNames = filesUri.mapIndexed { index, uri ->
             DocumentFile.fromSingleUri(ctx, uri)?.parentFile?.name
                 ?: uri.pathSegments.dropLast(1).lastOrNull()
@@ -470,60 +494,56 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
             List(baseNamesNoExt.size) { null }
         }
 
-        val chosenCbzNames: MutableList<String> = when {
-            _overrideFileName.value.isNotBlank() && _overrideMergeFiles.value -> {
-                val names = mutableListOf("${_overrideFileName.value}.cbz")
-                if (baseNames.size > 1) {
-                    names.addAll(baseNames.drop(1))
-                }
-                names
+        val defaultNames = filesUri.mapIndexed { index, _ ->
+            val mangaName = mangaNames[index]
+            val chapter = chapters[index]
+            val suffix = when {
+                chapter != null -> "_${chapter}"
+                filesUri.size == 1 -> ""
+                else -> "_${index + 1}"
             }
-            _overrideFileName.value.isNotBlank() -> {
-                if (baseNames.size == 1) {
-                    mutableListOf("${_overrideFileName.value}.cbz")
-                } else {
-                    MutableList(baseNames.size) { index -> "${_overrideFileName.value}_${index + 1}.cbz" }
-                }
-            }
-            else -> {
-                filesUri.mapIndexed { index, _ ->
-                    val mangaName = mangaNames[index]
-                    val chapter = chapters[index]
-                    val suffix = when {
-                        chapter != null -> "_${chapter}"
-                        filesUri.size == 1 -> ""
-                        else -> "_${index + 1}"
+            "$mangaName$suffix.pdf"
+        }.toMutableList().apply {
+            if (_overrideMergeFiles.value && areSelectedFilesFromSameParent()) {
+                val base = mangaNames.first()
+                if (_autoNameWithChapters.value) {
+                    val chapterPairs = chapters.mapIndexedNotNull { _, ch ->
+                        val numeric = ch?.replace(',', '.')?.toDoubleOrNull()
+                        if (numeric != null) numeric to ch else null
                     }
-                    "$mangaName$suffix.cbz"
-                }.toMutableList().apply {
-                    if (_overrideMergeFiles.value && areSelectedFilesFromSameParent()) {
-                        val base = mangaNames.first()
-                        if (_autoNameWithChapters.value) {
-                            val chapterPairs = chapters.mapIndexedNotNull { _, ch ->
-                                val numeric = ch?.replace(',', '.')?.toDoubleOrNull()
-                                if (numeric != null) numeric to ch else null
-                            }
-                            if (chapterPairs.isNotEmpty()) {
-                                val minPair = chapterPairs.minByOrNull { it.first }!!
-                                val maxPair = chapterPairs.maxByOrNull { it.first }!!
-                                val rangeSuffix = if (minPair == maxPair) {
-                                    "_${minPair.second}"
-                                } else {
-                                    "_${minPair.second}-${maxPair.second}"
-                                }
-                                this[0] = "$base$rangeSuffix.cbz"
-                            } else {
-                                this[0] = "$base.cbz"
-                            }
+                    if (chapterPairs.isNotEmpty()) {
+                        val minPair = chapterPairs.minByOrNull { it.first }!!
+                        val maxPair = chapterPairs.maxByOrNull { it.first }!!
+                        val rangeSuffix = if (minPair == maxPair) {
+                            "_${minPair.second}"
                         } else {
-                            this[0] = "$base.cbz"
+                            "_${minPair.second}-${maxPair.second}"
                         }
+                        this[0] = "$base$rangeSuffix.pdf"
+                    } else {
+                        this[0] = "$base.pdf"
                     }
+                } else {
+                    this[0] = "$base.pdf"
                 }
             }
         }
 
-        return chosenCbzNames.map { it.replace(".cbz", ".pdf", ignoreCase = true) }
+        return when {
+            _overrideFileName.value.isNotBlank() && _overrideMergeFiles.value -> {
+                mutableListOf("${_overrideFileName.value}.pdf").apply {
+                    if (filesUri.size > 1) addAll(defaultNames.drop(1))
+                }
+            }
+            _overrideFileName.value.isNotBlank() -> {
+                if (filesUri.size == 1) {
+                    listOf("${_overrideFileName.value}.pdf")
+                } else {
+                    List(filesUri.size) { index -> "${_overrideFileName.value}_${index + 1}.pdf" }
+                }
+            }
+            else -> defaultNames
+        }
     }
 
     private fun resolveFileNameConflicts(names: List<String>, outputFolder: File): List<String> {
