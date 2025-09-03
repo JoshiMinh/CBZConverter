@@ -183,7 +183,6 @@ private fun MihonScreen(
                 batchSize = batchSize,
                 overrideSortOrderToUseOffset = overrideSortOrderToUseOffset,
                 overrideMergeFiles = overrideMergeFiles,
-                overrideFileName = overrideFileName,
                 overrideOutputDirectoryUri = overrideOutputDirectoryUri,
                 compressOutputPdf = compressOutputPdf,
                 autoNameWithChapters = autoNameWithChapters,
