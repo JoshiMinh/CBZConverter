@@ -482,50 +482,27 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
             }
         }
 
-        // Use parent directory name as the base for output names
-        val mangaNames = filesUri.mapIndexed { index, uri ->
+        // In Mihon mode, always base the output name on the manga directory.
+        val mangaDirName = filesUri.firstOrNull()?.let { uri ->
             DocumentFile.fromSingleUri(ctx, uri)?.parentFile?.name
                 ?: uri.pathSegments.dropLast(1).lastOrNull()
-                ?: baseNamesNoExt[index]
-        }
-        val chapters = if (_autoNameWithChapters.value) {
-            baseNamesNoExt.map { extractChapterNumber(it) }
-        } else {
-            List(baseNamesNoExt.size) { null }
-        }
+                ?: baseNamesNoExt.firstOrNull()
+        } ?: "output"
 
-        val defaultNames = filesUri.mapIndexed { index, _ ->
-            val mangaName = mangaNames[index]
-            val chapter = chapters[index]
-            val suffix = when {
-                chapter != null -> "_${chapter}"
-                filesUri.size == 1 -> ""
-                else -> "_${index + 1}"
-            }
-            "$mangaName$suffix.pdf"
-        }.toMutableList().apply {
-            if (_overrideMergeFiles.value && areSelectedFilesFromSameParent()) {
-                val base = mangaNames.first()
-                if (_autoNameWithChapters.value) {
-                    val chapterPairs = chapters.mapIndexedNotNull { _, ch ->
-                        val numeric = ch?.replace(',', '.')?.toDoubleOrNull()
-                        if (numeric != null) numeric to ch else null
-                    }
-                    if (chapterPairs.isNotEmpty()) {
-                        val minPair = chapterPairs.minByOrNull { it.first }!!
-                        val maxPair = chapterPairs.maxByOrNull { it.first }!!
-                        val rangeSuffix = if (minPair == maxPair) {
-                            "_${minPair.second}"
-                        } else {
-                            "_${minPair.second}-${maxPair.second}"
-                        }
-                        this[0] = "$base$rangeSuffix.pdf"
-                    } else {
-                        this[0] = "$base.pdf"
-                    }
+        val defaultNames = if (_overrideMergeFiles.value || filesUri.size == 1) {
+            listOf("$mangaDirName.pdf")
+        } else {
+            filesUri.mapIndexed { index, _ ->
+                val chapter = if (_autoNameWithChapters.value) {
+                    extractChapterNumber(baseNamesNoExt[index])
                 } else {
-                    this[0] = "$base.pdf"
+                    null
                 }
+                val suffix = when {
+                    chapter != null -> "_${chapter}"
+                    else -> "_${index + 1}"
+                }
+                "$mangaDirName$suffix.pdf"
             }
         }
 
