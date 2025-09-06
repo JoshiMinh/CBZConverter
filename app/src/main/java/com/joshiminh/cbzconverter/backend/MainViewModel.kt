@@ -112,6 +112,11 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
     }
 
     fun toggleMergeFilesOverride(newValue: Boolean) {
+        if (newValue && !areSelectedFilesFromSameParent()) {
+            appendTask("Merge disabled: files from different manga")
+            contextHelper.showToast("Cannot merge files from different manga", Toast.LENGTH_LONG)
+            return
+        }
         _overrideMergeFiles.update { newValue }
     }
 
@@ -482,27 +487,34 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
             }
         }
 
-        // In Mihon mode, always base the output name on the manga directory.
-        val mangaDirName = filesUri.firstOrNull()?.let { uri ->
+        // In Mihon mode, derive each output name from its CBZ's parent directory.
+        val parentNames = filesUri.mapIndexed { index, uri ->
             DocumentFile.fromSingleUri(ctx, uri)?.parentFile?.name
                 ?: uri.pathSegments.dropLast(1).lastOrNull()
-                ?: baseNamesNoExt.firstOrNull()
-        } ?: "output"
+                ?: baseNamesNoExt.getOrNull(index)
+                ?: "output"
+        }
 
         val defaultNames = if (_overrideMergeFiles.value || filesUri.size == 1) {
-            listOf("$mangaDirName.pdf")
+            listOf("${parentNames.firstOrNull() ?: "output"}.pdf")
         } else {
+            val totals = parentNames.groupingBy { it }.eachCount()
+            val counts = mutableMapOf<String, Int>()
             filesUri.mapIndexed { index, _ ->
-                val chapter = if (_autoNameWithChapters.value) {
-                    extractChapterNumber(baseNamesNoExt[index])
+                val parent = parentNames[index]
+                val occurrence = counts.getOrDefault(parent, 0) + 1
+                counts[parent] = occurrence
+
+                val suffix = if ((totals[parent] ?: 1) > 1) {
+                    if (_autoNameWithChapters.value) {
+                        extractChapterNumber(baseNamesNoExt[index])?.let { "_${it}" } ?: "_${occurrence}"
+                    } else {
+                        "_${occurrence}"
+                    }
                 } else {
-                    null
+                    ""
                 }
-                val suffix = when {
-                    chapter != null -> "_${chapter}"
-                    else -> "_${index + 1}"
-                }
-                "$mangaDirName$suffix.pdf"
+                "$parent$suffix.pdf"
             }
         }
 
