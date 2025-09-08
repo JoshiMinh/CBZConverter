@@ -84,15 +84,24 @@ class ContextHelper(private val context: Context) {
         return s
     }
 
-    /** True if the candidate looks like a real filename, not a generic placeholder. */
+    /**
+     * True if the candidate looks like a real filename, not a generic placeholder.
+     * The base name is derived by removing the extension and any trailing numeric
+     * suffixes such as "-1" or "(1)" before comparison.
+     */
     private fun isMeaningful(name: String): Boolean {
         if (name.isBlank()) return false
-        val lower = name.lowercase()
-        // Common generic names exposed by SAF providers
-        if (lower == "document" || lower == "file" || lower == "download" || lower == "content") {
-            return false
-        }
-        // Sometimes providers return "document (1).pdf" etc. Accept those (they’re unique enough)
+
+        // Normalize by stripping extension and trailing numeric suffixes
+        var base = name.lowercase().substringBeforeLast('.')
+        base = base
+            .replace(Regex("\\s*\\(\\d+\\)$"), "") // "document(1)" -> "document"
+            .replace(Regex("[-_\\s]*\\d+$"), "")        // "document-1" -> "document"
+            .trim()
+
+        val placeholders = listOf("document", "file", "download", "content")
+        if (placeholders.any { base.startsWith(it) }) return false
+
         return true
     }
 
