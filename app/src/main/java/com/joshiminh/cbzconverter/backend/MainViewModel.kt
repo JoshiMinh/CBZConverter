@@ -460,12 +460,25 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
         val baseNames = filesUri.map { it.getFileName() }
         val baseNamesNoExt = baseNames.map { it.substringBeforeLast('.', it) }
 
+        // Resolve placeholders by falling back to parent directory names
+        val adjustedBaseNamesNoExt = baseNamesNoExt.toMutableList()
         if (!useParentDirectoryName) {
+            filesUri.forEachIndexed { index, uri ->
+                val candidate = baseNamesNoExt[index]
+                if (isPlaceholderName(candidate)) {
+                    val parent = DocumentFile.fromSingleUri(ctx, uri)?.parentFile?.name
+                        ?: uri.pathSegments.dropLast(1).lastOrNull()
+                    if (parent != null) {
+                        adjustedBaseNamesNoExt[index] = parent
+                    }
+                }
+            }
+
             return when {
                 _overrideFileName.value.isNotBlank() && _overrideMergeFiles.value -> {
                     mutableListOf("${_overrideFileName.value}.pdf").apply {
                         if (filesUri.size > 1) {
-                            addAll(baseNamesNoExt.drop(1).map { "$it.pdf" })
+                            addAll(adjustedBaseNamesNoExt.drop(1).map { "$it.pdf" })
                         }
                     }
                 }
@@ -477,7 +490,7 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
                     }
                 }
                 else -> {
-                    baseNamesNoExt.map { "$it.pdf" }
+                    adjustedBaseNamesNoExt.map { "$it.pdf" }
                 }
             }
         }
@@ -544,6 +557,16 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
             }
             else -> defaultNames
         }
+    }
+
+    private fun isPlaceholderName(name: String): Boolean {
+        var base = name.lowercase().substringBeforeLast('.')
+        base = base
+            .replace(Regex("\\s*\\(\\d+\\)$"), "")
+            .replace(Regex("[-_\\s]*\\d+$"), "")
+            .trim()
+        val placeholders = listOf("unknown", "document", "file", "download", "content")
+        return placeholders.contains(base)
     }
 
     private fun resolveFileNameConflicts(names: List<String>, outputFolder: File): List<String> {
