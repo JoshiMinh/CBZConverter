@@ -11,44 +11,89 @@ import com.anggrayudi.storage.file.DocumentFileCompat
 import com.anggrayudi.storage.file.getAbsolutePath
 import java.io.File
 import java.io.InputStream
+import java.net.URLDecoder
+import java.nio.charset.StandardCharsets
 
 class ContextHelper(private val context: Context) {
 
     /**
      * Best-effort display name for a [Uri].
-     * - Tries ContentResolver (DISPLAY_NAME)
-     * - Falls back to DocumentFileCompat
-     * - Finally falls back to the last path segment
+     * Priority:
+     * 1) ContentResolver DISPLAY_NAME (if not a generic placeholder)
+     * 2) DocumentFileCompat.name (if not generic)
+     * 3) Decode from path segment
+     * 4) Decode from full Uri string (handles some SAF providers returning "document")
+     * 5) "Unknown"
      */
     fun getFileName(uri: Uri): String {
-        // Query content resolver when possible
+        // 1) Query content resolver when possible
         if (uri.scheme.equals("content", ignoreCase = true)) {
             context.contentResolver
                 .query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
                 ?.use { cursor ->
                     val idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
                     if (idx != -1 && cursor.moveToFirst()) {
-                        cursor.getString(idx)?.let { return it }
+                        cursor.getString(idx)?.let { name ->
+                            val cleaned = cleanCandidate(name)
+                            if (isMeaningful(cleaned)) return cleaned
+                        }
                     }
                 }
         }
 
-        // Try DocumentFileCompat (works with SAF Uris, including tree/document)
-        DocumentFileCompat.fromUri(context, uri)?.name?.let { return it }
-
-        // Last-resort: try to infer a filename from the raw path. Some SAF
-        // providers (e.g. Downloads) expose generic "document" names via
-        // `lastPathSegment`, but the encoded path still contains the real file
-        // name. Decode and strip any directories or colon prefixes to recover
-        // something meaningful for the user.
-        uri.path?.let { rawPath ->
-            val decoded = java.net.URLDecoder.decode(rawPath, Charsets.UTF_8.name())
-            decoded.substringAfterLast('/')
-                .substringAfterLast(':')
-                .takeIf { it.isNotBlank() }?.let { return it }
+        // 2) Try DocumentFileCompat (works with SAF Uris, including tree/document)
+        DocumentFileCompat.fromUri(context, uri)?.name?.let { dfName ->
+            val cleaned = cleanCandidate(dfName)
+            if (isMeaningful(cleaned)) return cleaned
         }
 
+        // 3) Infer from raw path (decode and strip directory/colon prefixes)
+        uri.path?.let { rawPath ->
+            val decoded = URLDecoder.decode(rawPath, StandardCharsets.UTF_8.name())
+            val guess = cleanCandidate(
+                decoded.substringAfterLast('/')
+                    .substringAfterLast(':')
+            )
+            if (isMeaningful(guess)) return guess
+        }
+
+        // 4) Last-chance: parse from the FULL uri string (handles ?query, #fragment)
+        uri.toString().let { full ->
+            val decoded = URLDecoder.decode(full, StandardCharsets.UTF_8.name())
+            val guess = cleanCandidate(
+                decoded.substringAfterLast('/')
+                    .substringAfterLast(':')
+                    .substringBefore('?')
+                    .substringBefore('#')
+            )
+            if (isMeaningful(guess)) return guess
+        }
+
+        // 5) Give up
         return "Unknown"
+    }
+
+    /** Remove whitespace, trim quotes, and normalize suspicious placeholders. */
+    private fun cleanCandidate(name: String?): String {
+        if (name == null) return ""
+        // Strip surrounding quotes and trim spaces
+        var s = name.trim().trim('"', '\'').trim()
+        // Some providers expose mime-like or generic names without extension; keep as-is,
+        // ViewModel will add .pdf later. Just normalize "document" variants to plain "document".
+        if (s.contains(File.separator)) s = s.substringAfterLast(File.separator)
+        return s
+    }
+
+    /** True if the candidate looks like a real filename, not a generic placeholder. */
+    private fun isMeaningful(name: String): Boolean {
+        if (name.isBlank()) return false
+        val lower = name.lowercase()
+        // Common generic names exposed by SAF providers
+        if (lower == "document" || lower == "file" || lower == "download" || lower == "content") {
+            return false
+        }
+        // Sometimes providers return "document (1).pdf" etc. Accept those (they’re unique enough)
+        return true
     }
 
     /** Show a toast with a default SHORT length. */
