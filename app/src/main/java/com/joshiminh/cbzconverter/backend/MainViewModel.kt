@@ -468,9 +468,12 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
                 if (isPlaceholderName(candidate)) {
                     val parent = DocumentFile.fromSingleUri(ctx, uri)?.parentFile?.name
                         ?: uri.pathSegments.dropLast(1).lastOrNull()
-                    if (parent != null) {
-                        adjustedBaseNamesNoExt[index] = parent
+                    val resolved = if (parent != null && !isPlaceholderName(parent)) {
+                        parent
+                    } else {
+                        "Unknown"
                     }
+                    adjustedBaseNamesNoExt[index] = resolved
                 }
             }
 
@@ -497,9 +500,14 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
 
         // Use parent directory name as the base for output names
         val mangaNames = filesUri.mapIndexed { index, uri ->
-            DocumentFile.fromSingleUri(ctx, uri)?.parentFile?.name
+            val parent = DocumentFile.fromSingleUri(ctx, uri)?.parentFile?.name
                 ?: uri.pathSegments.dropLast(1).lastOrNull()
-                ?: baseNamesNoExt[index]
+            if (parent != null && !isPlaceholderName(parent)) {
+                parent
+            } else {
+                val base = baseNamesNoExt[index]
+                if (!isPlaceholderName(base)) base else "Unknown"
+            }
         }
         val chapters = if (_autoNameWithChapters.value) {
             baseNamesNoExt.map { extractChapterNumber(it) }
