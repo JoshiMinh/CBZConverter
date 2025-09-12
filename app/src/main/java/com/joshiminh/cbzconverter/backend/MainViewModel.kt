@@ -98,6 +98,8 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
     private val _mihonLoadProgress = MutableStateFlow(0f)
     val mihonLoadProgress = _mihonLoadProgress.asStateFlow()
 
+    private val cbzParentName = mutableMapOf<Uri, String>()
+
     init {
         contextHelper.getPreferences().getString(PREF_MIHON_DIR, null)?.let {
             _mihonDirectoryUri.value = Uri.parse(it)
@@ -236,14 +238,21 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
                     ext.listFiles().filter { it.isDirectory }
                 }
                 val total = mangaDirs.size.takeIf { it > 0 } ?: 1
-
                 val result = mutableListOf<MihonMangaEntry>()
+                cbzParentName.clear() // reset before rebuilding
+
                 mangaDirs.forEachIndexed { index, manga ->
+                    val mangaName = manga.name ?: "Unknown"
                     val cbzFiles = manga.listFiles()
                         .filter { !it.isDirectory && it.name?.endsWith(".cbz", true) == true }
-                        .map { MihonCbzFile(it.name ?: "Unknown", it.uri) }
+                        .map { file ->
+                            // remember parent (manga) name for this CBZ
+                            cbzParentName[file.uri] = mangaName
+                            MihonCbzFile(file.name ?: "Unknown", file.uri)
+                        }
+
                     if (cbzFiles.isNotEmpty()) {
-                        result.add(MihonMangaEntry(manga.name ?: "Unknown", cbzFiles))
+                        result.add(MihonMangaEntry(mangaName, cbzFiles))
                     }
                     _mihonLoadProgress.value = (index + 1) / total.toFloat()
                 }
@@ -464,15 +473,17 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
         val adjustedBaseNamesNoExt = baseNamesNoExt.toMutableList()
         if (!useParentDirectoryName) {
             filesUri.forEachIndexed { index, uri ->
-                val candidate = baseNamesNoExt[index]
-                if (isPlaceholderName(candidate)) {
-                    var parent = DocumentFile.fromSingleUri(ctx, uri)?.parentFile?.name
-                        ?: uri.pathSegments.dropLast(1).lastOrNull()
-                    if (parent == null || isPlaceholderName(parent)) {
-                        parent = "Unknown"
-                    }
-                    adjustedBaseNamesNoExt[index] = parent
-                }
+                val initialParent = DocumentFile.fromSingleUri(ctx, uri)?.parentFile?.name
+                    ?: uri.pathSegments.dropLast(1).lastOrNull()
+
+                val resolvedParent =
+                    initialParent?.takeUnless { isPlaceholderName(it) }
+                        ?: run {
+                            val base = baseNamesNoExt[index]
+                            if (!isPlaceholderName(base)) base else "Unknown"
+                        }
+
+                adjustedBaseNamesNoExt[index] = resolvedParent
             }
 
             return when {
@@ -496,16 +507,22 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
             }
         }
 
-        // Use parent directory name as the base for output names
         val mangaNames = filesUri.mapIndexed { index, uri ->
-            var parent = DocumentFile.fromSingleUri(ctx, uri)?.parentFile?.name
-                ?: uri.pathSegments.dropLast(1).lastOrNull()
-            if (parent == null || isPlaceholderName(parent)) {
-                val base = baseNamesNoExt[index]
-                parent = if (!isPlaceholderName(base)) base else "Unknown"
-            }
-            parent
+            // 1) Prefer the Mihon-sourced parent name if we have it
+            cbzParentName[uri]
+            // 2) Else try to resolve parent directory name from SAF
+                ?: run {
+                    val initialParent = DocumentFile.fromSingleUri(ctx, uri)?.parentFile?.name
+                        ?: uri.pathSegments.dropLast(1).lastOrNull()
+                    initialParent
+                }
+                // 3) Else fall back to base name (only if not placeholder), else "Unknown"
+                ?: run {
+                    val base = baseNamesNoExt[index]
+                    if (!isPlaceholderName(base)) base else "Unknown"
+                }
         }
+
         val chapters = if (_autoNameWithChapters.value) {
             baseNamesNoExt.map { extractChapterNumber(it) }
         } else {
