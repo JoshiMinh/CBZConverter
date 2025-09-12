@@ -28,6 +28,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.outlined.Info
@@ -132,7 +133,14 @@ fun MihonMode(
         Spacer(Modifier.height(16.dp))
 
         // ===== MANGA OPTIONS =====
-        SectionCard(title = "Manga Selection") {
+        SectionCard(
+            title = "Manga Selection",
+            action = {
+                IconButton(onClick = { viewModel.updateSelectedFileUrisFromUserInput(emptyList()) }) {
+                    Icon(Icons.Filled.Delete, contentDescription = "Clear selection")
+                }
+            }
+        ) {
             if (mihonDirectoryUri != null) {
                 if (isLoadingMihonManga) {
                     LinearProgressIndicator(
@@ -200,30 +208,6 @@ fun MihonMode(
                         .padding(8.dp)
                 )
             }
-
-            Spacer(Modifier.height(12.dp))
-
-            Button(
-                onClick = {
-                    if (selectedFilesUri.isNotEmpty()) {
-                        viewModel.convertToPDF(selectedFilesUri, useParentDirectoryName = true)
-                    }
-                },
-                enabled = selectedFilesUri.isNotEmpty() && !isCurrentlyConverting,
-                modifier = Modifier.fillMaxWidth()
-            ) { Text("Convert to PDF") }
-
-            Spacer(Modifier.height(8.dp))
-
-            Button(
-                onClick = {
-                    if (selectedFilesUri.isNotEmpty()) {
-                        viewModel.convertToEPUB(selectedFilesUri, useParentDirectoryName = true)
-                    }
-                },
-                enabled = selectedFilesUri.isNotEmpty() && !isCurrentlyConverting,
-                modifier = Modifier.fillMaxWidth()
-            ) { Text("Convert to EPUB") }
         }
 
         Spacer(Modifier.height(16.dp))
@@ -386,7 +370,18 @@ fun MihonMode(
 
         Spacer(Modifier.height(24.dp))
 
-        // ===== SEND TO KINDLE =====
+        Button(
+            onClick = {
+                if (selectedFilesUri.isNotEmpty()) {
+                    viewModel.convertToPDF(selectedFilesUri, useParentDirectoryName = true)
+                }
+            },
+            enabled = selectedFilesUri.isNotEmpty() && !isCurrentlyConverting,
+            modifier = Modifier.fillMaxWidth()
+        ) { Text("Export") }
+
+        Spacer(Modifier.height(8.dp))
+
         Button(
             onClick = {
                 val intent = Intent(
@@ -399,6 +394,24 @@ fun MihonMode(
             modifier = Modifier.fillMaxWidth()
         ) {
             Text("Send to Kindle")
+        }
+
+        Spacer(Modifier.height(8.dp))
+
+        Button(
+            onClick = {
+                val outputUri = overrideOutputDirectoryUri
+                    ?: Uri.parse("content://com.android.externalstorage.documents/document/primary%3ADownload")
+                val intent = Intent(Intent.ACTION_VIEW).apply {
+                    setDataAndType(outputUri, "*/*")
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                activity.startActivity(intent)
+            },
+            enabled = !isCurrentlyConverting,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Open File Explorer")
         }
 
         Spacer(Modifier.height(24.dp))
@@ -431,20 +444,32 @@ private fun MangaToggleList(
             ) {
                 Column(Modifier.padding(8.dp)) {
                     Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { expanded = !expanded },
+                        modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        val allSelected = entry.files.all { selectedUris.contains(it.uri) }
+                        Checkbox(
+                            checked = allSelected,
+                            onCheckedChange = { checked ->
+                                entry.files.forEach { file ->
+                                    val contains = selectedUris.contains(file.uri)
+                                    if (checked && !contains) onToggle(file.uri)
+                                    else if (!checked && contains) onToggle(file.uri)
+                                }
+                            }
+                        )
                         Text(
                             entry.name,
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable { expanded = !expanded },
                             maxLines = 3,
                             overflow = TextOverflow.Ellipsis
                         )
                         Icon(
                             imageVector = if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
-                            contentDescription = if (expanded) "Collapse" else "Expand"
+                            contentDescription = if (expanded) "Collapse" else "Expand",
+                            modifier = Modifier.clickable { expanded = !expanded }
                         )
                     }
                     AnimatedVisibility(
@@ -621,6 +646,7 @@ private fun ConfigButtonItem(
 private fun SectionCard(
     title: String,
     modifier: Modifier = Modifier,
+    action: (@Composable () -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit
 ) {
     ElevatedCard(
@@ -628,7 +654,18 @@ private fun SectionCard(
         elevation = CardDefaults.elevatedCardElevation()
     ) {
         Column(Modifier.padding(16.dp)) {
-            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f)
+                )
+                action?.invoke()
+            }
             Spacer(Modifier.height(12.dp))
             content()
         }

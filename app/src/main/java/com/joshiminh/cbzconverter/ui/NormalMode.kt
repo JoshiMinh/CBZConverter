@@ -113,22 +113,6 @@ fun NormalMode(
                 enabled = !isCurrentlyConverting,
                 modifier = Modifier.fillMaxWidth()
             ) { Text("Select CBZ File(s)") }
-
-            Spacer(Modifier.height(12.dp))
-
-            Button(
-                onClick = { if (selectedFilesUri.isNotEmpty()) viewModel.convertToPDF(selectedFilesUri) },
-                enabled = selectedFilesUri.isNotEmpty() && !isCurrentlyConverting,
-                modifier = Modifier.fillMaxWidth()
-            ) { Text("Convert to PDF") }
-
-            Spacer(Modifier.height(8.dp))
-
-            Button(
-                onClick = { if (selectedFilesUri.isNotEmpty()) viewModel.convertToEPUB(selectedFilesUri) },
-                enabled = selectedFilesUri.isNotEmpty() && !isCurrentlyConverting,
-                modifier = Modifier.fillMaxWidth()
-            ) { Text("Convert to EPUB") }
         }
 
         Spacer(Modifier.height(16.dp))
@@ -290,7 +274,14 @@ fun NormalMode(
 
         Spacer(Modifier.height(24.dp))
 
-        // ===== SEND TO KINDLE =====
+        Button(
+            onClick = { if (selectedFilesUri.isNotEmpty()) viewModel.convertToPDF(selectedFilesUri) },
+            enabled = selectedFilesUri.isNotEmpty() && !isCurrentlyConverting,
+            modifier = Modifier.fillMaxWidth()
+        ) { Text("Export") }
+
+        Spacer(Modifier.height(8.dp))
+
         Button(
             onClick = {
                 val intent = Intent(
@@ -303,6 +294,24 @@ fun NormalMode(
             modifier = Modifier.fillMaxWidth()
         ) {
             Text("Send to Kindle")
+        }
+
+        Spacer(Modifier.height(8.dp))
+
+        Button(
+            onClick = {
+                val outputUri = overrideOutputDirectoryUri
+                    ?: Uri.parse("content://com.android.externalstorage.documents/document/primary%3ADownload")
+                val intent = Intent(Intent.ACTION_VIEW).apply {
+                    setDataAndType(outputUri, "*/*")
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                activity.startActivity(intent)
+            },
+            enabled = !isCurrentlyConverting,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Open File Explorer")
         }
 
         Spacer(Modifier.height(24.dp))
