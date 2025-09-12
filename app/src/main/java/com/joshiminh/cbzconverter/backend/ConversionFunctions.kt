@@ -172,8 +172,6 @@ private fun mergeFilesAndCreatePdf(
     return outputFiles
 }
 
-}
-
 /**
  * Order ZIP entries either by natural ZIP offset (original order) or by filename.
  */
