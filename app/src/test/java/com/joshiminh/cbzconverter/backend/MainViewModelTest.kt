@@ -81,5 +81,65 @@ class MainViewModelTest {
             assertEquals(listOf("Parent.pdf", "Parent 1.pdf"), resolved)
         }
     }
+
+    @Test
+    fun getPdfFileNames_avoids_document_placeholder_in_default_mode() {
+        val helper = mock(ContextHelper::class.java)
+        val ctx = mock(Context::class.java)
+        Mockito.`when`(helper.getContext()).thenReturn(ctx)
+
+        val uri = Uri.parse("content://provider/document/file.cbz")
+        Mockito.`when`(helper.getFileName(uri)).thenReturn("document.pdf")
+
+        val viewModel = MainViewModel(helper)
+
+        Mockito.mockStatic(DocumentFile::class.java).use { dfMock ->
+            val parent = mock(DocumentFile::class.java)
+            Mockito.`when`(parent.name).thenReturn("document")
+            val file = mock(DocumentFile::class.java)
+            Mockito.`when`(file.parentFile).thenReturn(parent)
+            dfMock.`when`<DocumentFile?> { DocumentFile.fromSingleUri(any(Context::class.java), any(Uri::class.java)) }
+                .thenReturn(file)
+
+            val method = viewModel.javaClass.getDeclaredMethod(
+                "getPdfFileNames",
+                List::class.java,
+                Boolean::class.javaPrimitiveType
+            )
+            method.isAccessible = true
+            val names = method.invoke(viewModel, listOf(uri), false) as List<String>
+            assertEquals(listOf("Unknown.pdf"), names)
+        }
+    }
+
+    @Test
+    fun getPdfFileNames_uses_file_name_when_parent_is_placeholder_in_mihon_mode() {
+        val helper = mock(ContextHelper::class.java)
+        val ctx = mock(Context::class.java)
+        Mockito.`when`(helper.getContext()).thenReturn(ctx)
+
+        val uri = Uri.parse("content://provider/document/MyManga.cbz")
+        Mockito.`when`(helper.getFileName(uri)).thenReturn("MyManga.cbz")
+
+        val viewModel = MainViewModel(helper)
+
+        Mockito.mockStatic(DocumentFile::class.java).use { dfMock ->
+            val parent = mock(DocumentFile::class.java)
+            Mockito.`when`(parent.name).thenReturn("document")
+            val file = mock(DocumentFile::class.java)
+            Mockito.`when`(file.parentFile).thenReturn(parent)
+            dfMock.`when`<DocumentFile?> { DocumentFile.fromSingleUri(any(Context::class.java), any(Uri::class.java)) }
+                .thenReturn(file)
+
+            val method = viewModel.javaClass.getDeclaredMethod(
+                "getPdfFileNames",
+                List::class.java,
+                Boolean::class.javaPrimitiveType
+            )
+            method.isAccessible = true
+            val names = method.invoke(viewModel, listOf(uri), true) as List<String>
+            assertEquals(listOf("MyManga.pdf"), names)
+        }
+    }
 }
 
