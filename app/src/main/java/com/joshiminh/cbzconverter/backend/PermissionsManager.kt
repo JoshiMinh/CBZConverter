@@ -1,31 +1,35 @@
 package com.joshiminh.cbzconverter.backend
 
 import android.Manifest
-import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
-import android.provider.Settings
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.ManagedActivityResultLauncher
 import androidx.annotation.ChecksSdkIntAtLeast
-import androidx.annotation.RequiresApi
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import androidx.core.net.toUri
 
 /**
  * Centralizes permission checks and launchers for file/directory selection.
  *
  * Behavior:
- * - On Android R+ (API 30+), this follows your original logic:
- *   requires MANAGE_EXTERNAL_STORAGE (All Files Access) before launching pickers.
+ * - On Android R+ (API 30+), launches Storage Access Framework pickers directly and
+ *   surfaces a toast reminding users to grant "All files" access if saving to
+ *   public folders fails.
  * - On legacy devices, it requests READ/WRITE_EXTERNAL_STORAGE as needed.
  */
 object PermissionsManager {
 
     private const val STORAGE_PERMISSION_CODE = 1001
+    private val FILE_MIME_TYPES = arrayOf(
+        "application/vnd.comicbook+zip",
+        "application/x-cbz",
+        "application/zip",
+        "application/octet-stream"
+    )
 
     /** Request array for legacy (pre-R) external storage permissions. */
     private val LEGACY_PERMISSIONS = arrayOf(
@@ -44,13 +48,16 @@ object PermissionsManager {
     ) {
         if (isRorAbove()) {
             if (!Environment.isExternalStorageManager()) {
-                openAllFilesAccessSettings(activity)
-            } else {
-                filePickerLauncher.launch(arrayOf("*/*"))
+                Toast.makeText(
+                    activity,
+                    "Grant \"All files access\" from settings if saving to Downloads fails.",
+                    Toast.LENGTH_LONG
+                ).show()
             }
+            launchFilePicker(filePickerLauncher)
         } else {
             if (hasLegacyStoragePermissions(activity)) {
-                filePickerLauncher.launch(arrayOf("*/*"))
+                launchFilePicker(filePickerLauncher)
             } else {
                 requestLegacyStoragePermissions(activity)
             }
@@ -70,16 +77,29 @@ object PermissionsManager {
     ) {
         if (isRorAbove()) {
             if (!Environment.isExternalStorageManager()) {
-                openAllFilesAccessSettings(activity)
-            } else {
-                directoryPickerLauncher.launch(initialDirectory)
+                Toast.makeText(
+                    activity,
+                    "Grant \"All files access\" from settings if writing to Downloads fails.",
+                    Toast.LENGTH_LONG
+                ).show()
             }
+            directoryPickerLauncher.launch(initialDirectory)
         } else {
             if (hasLegacyStoragePermissions(activity)) {
                 directoryPickerLauncher.launch(initialDirectory)
             } else {
                 requestLegacyStoragePermissions(activity)
             }
+        }
+    }
+
+    private fun launchFilePicker(
+        filePickerLauncher: ManagedActivityResultLauncher<Array<String>, List<Uri>>
+    ) {
+        runCatching {
+            filePickerLauncher.launch(FILE_MIME_TYPES)
+        }.onFailure {
+            filePickerLauncher.launch(arrayOf("*/*"))
         }
     }
 
@@ -108,26 +128,4 @@ object PermissionsManager {
         )
     }
 
-    /**
-     * Opens the per-app "All Files Access" settings on Android R+.
-     * Falls back to the generic settings if the per-app one isn’t available.
-     */
-    @RequiresApi(Build.VERSION_CODES.R)
-    private fun openAllFilesAccessSettings(activity: ComponentActivity) {
-        val packageUri = "package:${activity.packageName}".toUri()
-
-        // Prefer the per-app page
-        val appIntent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
-            data = packageUri
-        }
-
-        // Fallback to global page if needed
-        val globalIntent = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
-
-        try {
-            ContextCompat.startActivity(activity, appIntent, null)
-        } catch (_: Exception) {
-            ContextCompat.startActivity(activity, globalIntent, null)
-        }
-    }
 }
