@@ -8,6 +8,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.ManagedActivityResultLauncher
 import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import java.io.File
 import java.util.logging.Level
@@ -31,6 +32,16 @@ data class MihonMangaEntry(val name: String, val files: List<MihonCbzFile>)
  * - Converting CBZ -> PDF (on a background dispatcher)
  */
 class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
+
+    class Factory(private val contextHelper: ContextHelper) : ViewModelProvider.Factory {
+        override fun <T : ViewModel> create(modelClass: Class<T>): T {
+            if (modelClass.isAssignableFrom(MainViewModel::class.java)) {
+                @Suppress("UNCHECKED_CAST")
+                return MainViewModel(contextHelper) as T
+            }
+            throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
+        }
+    }
 
     companion object {
         private const val NOTHING_PROCESSING = "Idle"
@@ -74,6 +85,9 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
     private val _selectedFileUri = MutableStateFlow<List<Uri>>(emptyList())
     val selectedFileUri = _selectedFileUri.asStateFlow()
 
+    private val _canMergeSelection = MutableStateFlow(true)
+    val canMergeSelection = _canMergeSelection.asStateFlow()
+
     private val _overrideFileName = MutableStateFlow(EMPTY_STRING)
     val overrideFileName = _overrideFileName.asStateFlow()
 
@@ -103,7 +117,6 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
     init {
         contextHelper.getPreferences().getString(PREF_MIHON_DIR, null)?.let {
             _mihonDirectoryUri.value = Uri.parse(it)
-            refreshMihonManga()
         }
     }
 
@@ -139,6 +152,8 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
         }
 
         contextHelper.getPreferences().edit().putString(PREF_MIHON_DIR, newUri.toString()).apply()
+        _mihonMangaEntries.value = emptyList()
+        _mihonLoadProgress.value = 0f
         updateSelectedFileUrisFromUserInput(emptyList())
         refreshMihonManga()
     }
@@ -189,17 +204,21 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
         try {
             _selectedFileUri.update { newSelectedFileUris }
 
+            val canMerge = haveSameParent(newSelectedFileUris)
+            _canMergeSelection.value = canMerge
+
             val names = newSelectedFileUris.joinToString(separator = "\n") { it.getFileName() }
 
             updateSelectedFileNameFromUserInput(names)
             setTask("Selected ${newSelectedFileUris.size} file(s)")
             setSubTask("Ready to convert")
-            if (!areSelectedFilesFromSameParent()) {
+            if (!canMerge) {
                 _overrideMergeFiles.update { false }
             }
         } catch (_: Exception) {
             appendTask("File selection failed. Cleared")
             _selectedFileUri.update { emptyList() }
+            _canMergeSelection.value = true
         }
     }
 
@@ -209,13 +228,53 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
         updateSelectedFileUrisFromUserInput(current)
     }
 
-    fun areSelectedFilesFromSameParent(): Boolean {
+    fun moveSelectedFile(fromIndex: Int, toIndex: Int) {
+        val current = _selectedFileUri.value
+        if (current.isEmpty() || fromIndex !in current.indices) return
+
+        val destination = toIndex.coerceIn(0, current.lastIndex)
+        if (fromIndex == destination) return
+
+        val reordered = current.toMutableList().also { list ->
+            val item = list.removeAt(fromIndex)
+            list.add(destination, item)
+        }
+
+        updateSelectedFileUrisFromUserInput(reordered)
+    }
+
+    fun areSelectedFilesFromSameParent(): Boolean = _canMergeSelection.value
+
+    private fun haveSameParent(uris: List<Uri>): Boolean {
+        if (uris.size <= 1) return true
+
+        val expectedName = cbzParentName[uris.first()]
+        if (expectedName != null) {
+            val mismatch = uris.any { uri ->
+                val name = cbzParentName[uri]
+                name != null && name != expectedName
+            }
+            if (mismatch) return false
+            val unknownCount = uris.count { cbzParentName[it] == null }
+            if (unknownCount == 0) {
+                return true
+            }
+        }
+
         val ctx = contextHelper.getContext()
-        val selected = _selectedFileUri.value
-        if (selected.size <= 1) return true
-        val firstParent = DocumentFile.fromSingleUri(ctx, selected.first())?.parentFile?.uri
-        return selected.all {
-            DocumentFile.fromSingleUri(ctx, it)?.parentFile?.uri == firstParent
+        val parentCache = mutableMapOf<Uri, Uri?>()
+        fun resolveParent(uri: Uri): Uri? = parentCache.getOrPut(uri) {
+            DocumentFile.fromSingleUri(ctx, uri)?.parentFile?.uri
+        }
+
+        val expectedParent = resolveParent(uris.first())
+        return uris.all { uri ->
+            val name = cbzParentName[uri]
+            if (expectedName != null && name != null) {
+                name == expectedName
+            } else {
+                resolveParent(uri) == expectedParent
+            }
         }
     }
 
@@ -225,9 +284,12 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
      */
     fun refreshMihonManga() {
         val rootUri = _mihonDirectoryUri.value ?: return
+        if (_isLoadingMihonManga.value) return
+
+        _isLoadingMihonManga.value = true
+        _mihonLoadProgress.value = 0f
+
         viewModelScope.launch(Dispatchers.IO) {
-            _isLoadingMihonManga.value = true
-            _mihonLoadProgress.value = 0f
             try {
                 val ctx = contextHelper.getContext()
                 val root = DocumentFile.fromTreeUri(ctx, rootUri) ?: return@launch
@@ -266,7 +328,8 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
     // ------------------------ Conversion Flow ------------------------
 
     fun convertToPDF(fileUris: List<Uri>, useParentDirectoryName: Boolean = false) {
-        if (_overrideMergeFiles.value && !areSelectedFilesFromSameParent()) {
+        val canMerge = haveSameParent(fileUris)
+        if (_overrideMergeFiles.value && !canMerge) {
             appendTask("Merge disabled: files from different manga")
             contextHelper.showToast("Cannot merge files from different manga", Toast.LENGTH_LONG)
             _overrideMergeFiles.update { false }
@@ -473,7 +536,7 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
             }
             "$mangaName$suffix.pdf"
         }.toMutableList().apply {
-            if (_overrideMergeFiles.value && areSelectedFilesFromSameParent()) {
+            if (_overrideMergeFiles.value && haveSameParent(filesUri)) {
                 val base = mangaNames.first()
                 if (_autoNameWithChapters.value) {
                     val chapterPairs = chapters.mapIndexedNotNull { _, ch ->
