@@ -47,9 +47,9 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
         private const val NOTHING_PROCESSING = "Idle"
         private const val NO_FILE_SELECTED = "No file"
         const val EMPTY_STRING = ""
-        private const val DEFAULT_MAX_NUMBER_OF_PAGES = 10_000
-        // Lowered default to ensure large merges (200+ pages) use batch processing
-        // to avoid running out of memory during conversion.
+        private const val DEFAULT_MAX_NUMBER_OF_PAGES = 1_000
+        // Lowered default to ensure large merges still use batch processing when needed
+        // to avoid running out of memory during conversion while keeping merges manageable.
         private const val DEFAULT_BATCH_SIZE = 200
         private const val PREF_MIHON_DIR = "mihon_directory"
     }
@@ -72,9 +72,6 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
 
     private val _batchSize = MutableStateFlow(DEFAULT_BATCH_SIZE)
     val batchSize = _batchSize.asStateFlow()
-
-    private val _overrideSortOrderToUseOffset = MutableStateFlow(false)
-    val overrideSortOrderToUseOffset = _overrideSortOrderToUseOffset.asStateFlow()
 
     private val _overrideMergeFiles = MutableStateFlow(false)
     val overrideMergeFiles = _overrideMergeFiles.asStateFlow()
@@ -121,10 +118,6 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
     }
 
     // --------------------------- Mutators ----------------------------
-
-    fun toggleOverrideSortOrderToUseOffset(newValue: Boolean) {
-        _overrideSortOrderToUseOffset.update { newValue }
-    }
 
     fun toggleMergeFilesOverride(newValue: Boolean) {
         _overrideMergeFiles.update { newValue }
@@ -365,7 +358,6 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
                     maxNumberOfPages = _maxNumberOfPages.value,
                     batchSize = _batchSize.value,
                     outputFileNames = pdfFileNames,
-                    overrideSortOrderToUseOffset = _overrideSortOrderToUseOffset.value,
                     overrideMergeFiles = _overrideMergeFiles.value,
                     compressOutputPdf = _compressOutputPdf.value,
                     outputDirectory = outputFolder
@@ -607,11 +599,11 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
 
     @Suppress("DEPRECATION")
     private fun getOutputFolder(): File {
-        var outputFolder = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+        val defaultDownloads = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
         overrideOutputDirectoryUri.value?.let { uri ->
-            outputFolder = contextHelper.getOutputFolderUri(uri)
+            contextHelper.getOutputFolderUri(uri)?.let { return it }
         }
-        return outputFolder
+        return defaultDownloads
     }
 
     private suspend fun showToastAndTask(

@@ -6,11 +6,11 @@ import android.net.Uri
 import android.os.Environment
 import com.itextpdf.io.image.ImageDataFactory
 import com.itextpdf.kernel.geom.PageSize
+import com.itextpdf.kernel.pdf.CompressionConstants
 import com.itextpdf.kernel.pdf.PdfDocument
 import com.itextpdf.kernel.pdf.PdfReader
 import com.itextpdf.kernel.pdf.PdfWriter
 import com.itextpdf.kernel.pdf.WriterProperties
-import com.itextpdf.kernel.pdf.CompressionConstants
 import com.itextpdf.kernel.utils.PdfMerger
 import com.itextpdf.layout.Document
 import com.itextpdf.layout.element.Image
@@ -18,16 +18,16 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
 import java.util.logging.Logger
-import java.util.stream.Collectors
-import java.util.stream.IntStream
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 import java.util.zip.ZipOutputStream
 import kotlin.math.ceil
-import kotlin.streams.asStream
+import kotlin.sequences.asSequence
 
 private val logger = Logger.getLogger("com.joshiminh.cbzconverter.ConversionFunctions")
 private const val COMBINED_TEMP_CBZ_FILE = "combined_temp.cbz"
+private const val DEFAULT_JPEG_QUALITY = 90
+private const val COMPRESSED_JPEG_QUALITY = 75
 
 /**
  * Entry point for converting one or multiple CBZ files to PDF(s).
@@ -36,10 +36,9 @@ fun convertCbzToPdf(
     fileUri: List<Uri>,
     contextHelper: ContextHelper,
     subStepStatusAction: (String) -> Unit = { status -> logger.info(status) },
-    maxNumberOfPages: Int = 100,
+    maxNumberOfPages: Int = 1_000,
     batchSize: Int = 300,
     outputFileNames: List<String> = List(fileUri.size) { index -> "output_$index.pdf" },
-    overrideSortOrderToUseOffset: Boolean = false,
     overrideMergeFiles: Boolean = false,
     compressOutputPdf: Boolean = false,
     outputDirectory: File = contextHelper.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
@@ -47,7 +46,12 @@ fun convertCbzToPdf(
     if (fileUri.isEmpty()) return mutableListOf()
 
     val outputFiles = mutableListOf<File>()
-    contextHelper.getCacheDir().deleteRecursively()
+    contextHelper.getCacheDir().let { cacheDir ->
+        if (cacheDir.exists()) {
+            cacheDir.deleteRecursively()
+        }
+        cacheDir.mkdirs()
+    }
 
     return if (overrideMergeFiles) {
         mergeFilesAndCreatePdf(
@@ -56,7 +60,6 @@ fun convertCbzToPdf(
             subStepStatusAction = subStepStatusAction,
             outputFileNames = outputFileNames,
             outputFiles = outputFiles,
-            overrideSortOrderToUseOffset = overrideSortOrderToUseOffset,
             outputDirectory = outputDirectory,
             maxNumberOfPages = maxNumberOfPages,
             batchSize = batchSize,
@@ -69,13 +72,12 @@ fun convertCbzToPdf(
             contextHelper = contextHelper,
             subStepStatusAction = subStepStatusAction,
             outputFiles = outputFiles,
-            overrideSortOrderToUseOffset = overrideSortOrderToUseOffset,
             outputDirectory = outputDirectory,
             maxNumberOfPages = maxNumberOfPages,
             batchSize = batchSize,
             compressOutputPdf = compressOutputPdf
         )
-    }
+}
 }
 
 /**
@@ -87,7 +89,6 @@ private fun applyEachFileAndCreatePdf(
     contextHelper: ContextHelper,
     subStepStatusAction: (String) -> Unit,
     outputFiles: MutableList<File>,
-    overrideSortOrderToUseOffset: Boolean,
     outputDirectory: File,
     maxNumberOfPages: Int,
     batchSize: Int,
@@ -106,7 +107,6 @@ private fun applyEachFileAndCreatePdf(
             createPdfEitherSingleOrMultiple(
                 tempFile = tempFile,
                 subStepStatusAction = subStepStatusAction,
-                overrideSortOrderToUseOffset = overrideSortOrderToUseOffset,
                 outputFileName = outputFileName,
                 outputDirectory = outputDirectory,
                 maxNumberOfPages = maxNumberOfPages,
@@ -132,7 +132,6 @@ private fun mergeFilesAndCreatePdf(
     subStepStatusAction: (String) -> Unit,
     outputFileNames: List<String>,
     outputFiles: MutableList<File>,
-    overrideSortOrderToUseOffset: Boolean,
     outputDirectory: File,
     maxNumberOfPages: Int,
     batchSize: Int,
@@ -159,7 +158,6 @@ private fun mergeFilesAndCreatePdf(
     createPdfEitherSingleOrMultiple(
         tempFile = combinedTempFile,
         subStepStatusAction = subStepStatusAction,
-        overrideSortOrderToUseOffset = overrideSortOrderToUseOffset,
         outputFileName = outputFileName,
         outputDirectory = outputDirectory,
         maxNumberOfPages = maxNumberOfPages,
@@ -175,22 +173,11 @@ private fun mergeFilesAndCreatePdf(
 /**
  * Order ZIP entries either by natural ZIP offset (original order) or by filename.
  */
-private fun orderZipEntriesToList(
-    overrideSortOrderToUseOffset: Boolean,
-    zipFile: ZipFile
-): List<ZipEntry> {
-    val zipFileEntriesStream = zipFile.entries().asSequence().asStream()
-
-    // Without `.sorted`, iteration follows the original order in the ZIP (offset-based).
-    // With `.sorted`, sort by filename lexicographically (ascending).
-    return if (overrideSortOrderToUseOffset) {
-        zipFileEntriesStream.collect(Collectors.toList())
-    } else {
-        zipFileEntriesStream
-            .sorted { f1, f2 -> f1.name.compareTo(f2.name) }
-            .collect(Collectors.toList())
-    }
-}
+private fun orderZipEntriesByName(zipFile: ZipFile): List<ZipEntry> =
+    zipFile.entries()
+        .asSequence()
+        .sortedBy { it.name }
+        .toList()
 
 /**
  * Append all entries from a CBZ (ZIP) into an output ZIP stream with stable ordering.
@@ -246,7 +233,6 @@ private fun addEntriesToZip(
 fun createPdfEitherSingleOrMultiple(
     tempFile: File,
     subStepStatusAction: (String) -> Unit,
-    overrideSortOrderToUseOffset: Boolean,
     outputFileName: String,
     outputDirectory: File,
     maxNumberOfPages: Int,
@@ -263,10 +249,7 @@ fun createPdfEitherSingleOrMultiple(
         return mutableListOf()
     }
 
-    val zipFileEntriesList = orderZipEntriesToList(
-        overrideSortOrderToUseOffset = overrideSortOrderToUseOffset,
-        zipFile = zipFile
-    )
+    val zipFileEntriesList = orderZipEntriesByName(zipFile)
 
     if (!outputDirectory.exists()) outputDirectory.mkdirs()
 
@@ -365,14 +348,15 @@ private fun createPdfFromImageList(
             Document(pdfDoc, PageSize.LETTER, true).use { document ->
                 setMarginForDocument(document)
 
-                for ((currentImageIndex, imageFile) in imagesToProcess.withIndex()) {
-                    subStepStatusAction(messageFormat(currentImageIndex + 1))
+                imagesToProcess.forEachIndexed { index, imageFile ->
+                    subStepStatusAction(messageFormat(index + 1))
                     extractImageAndAddToPDFDocument(
                         zipFile = zipFile,
                         zipFileEntry = imageFile,
                         document = document,
                         contextHelper = contextHelper,
-                        subStepStatusAction = subStepStatusAction
+                        subStepStatusAction = subStepStatusAction,
+                        compressOutputPdf = compressOutputPdf
                     )
                 }
 
@@ -402,7 +386,7 @@ private fun createMultiplePdfFromCbz(
 ) {
     val amountOfFilesToExport = ceil(totalNumberOfImages.toDouble() / maxNumberOfPages).toInt()
 
-    IntStream.range(0, amountOfFilesToExport).forEach { index ->
+    for (index in 0 until amountOfFilesToExport) {
         val newOutputFileName = outputFileName.replace(".pdf", "_part-${index + 1}.pdf")
         val outputFile = File(outputDirectory, newOutputFileName)
 
@@ -464,7 +448,7 @@ private fun createPdfWithBatchProcessing(
     val tempOutputFiles = mutableListOf<File>()
     val amountOfMemoryBatches = ceil(totalNumberOfImages.toDouble() / batchSize).toInt()
 
-    IntStream.range(0, amountOfMemoryBatches).forEach { memoryBatchIndex ->
+    for (memoryBatchIndex in 0 until amountOfMemoryBatches) {
         val tempMemoryBatchFileName = "temp_memory_batch_${memoryBatchIndex + 1}.pdf"
         val tempBatchFile = File(contextHelper.getCacheDir(), tempMemoryBatchFileName)
 
@@ -477,11 +461,11 @@ private fun createPdfWithBatchProcessing(
             zipFile = zipFile,
             contextHelper = contextHelper,
             subStepStatusAction = subStepStatusAction,
-            messageFormat = { currentImageIndex ->
-                "Processing memory batch ${memoryBatchIndex + 1} of $amountOfMemoryBatches - Processing image file ${startIndex + currentImageIndex} of $totalNumberOfImages"
-            },
-            compressOutputPdf = compressOutputPdf
-        )
+                messageFormat = { currentImageIndex ->
+                    "Processing memory batch ${memoryBatchIndex + 1} of $amountOfMemoryBatches - Processing image file ${startIndex + currentImageIndex} of $totalNumberOfImages"
+                },
+                compressOutputPdf = compressOutputPdf
+            )
 
         tempOutputFiles.add(tempBatchFile)
     }
@@ -596,7 +580,7 @@ private fun setMarginForDocument(document: Document) {
 /**
  * Convert a WebP image file to JPEG.
  */
-private fun convertWebpToJpeg(inputFile: File): File {
+private fun convertWebpToJpeg(inputFile: File, quality: Int): File {
     return try {
         // Decode WebP using Android's BitmapFactory
         val options = BitmapFactory.Options()
@@ -607,8 +591,8 @@ private fun convertWebpToJpeg(inputFile: File): File {
         val outputFile = File(inputFile.parentFile, "temp_converted.jpg")
         val outputStream = FileOutputStream(outputFile)
 
-        // Compress to JPEG with 90% quality
-        bitmap.compress(Bitmap.CompressFormat.JPEG, 90, outputStream)
+        // Compress to JPEG using the requested quality
+        bitmap.compress(Bitmap.CompressFormat.JPEG, quality, outputStream)
         outputStream.close()
         bitmap.recycle()
 
@@ -616,6 +600,24 @@ private fun convertWebpToJpeg(inputFile: File): File {
     } catch (e: Exception) {
         logger.warning("Failed to convert WebP to JPEG: ${e.message}")
         throw e
+    }
+}
+
+private fun recompressImageToJpeg(source: File, quality: Int): File? {
+    return try {
+        val options = BitmapFactory.Options()
+        val bitmap = BitmapFactory.decodeFile(source.absolutePath, options) ?: return null
+
+        val compressedFile = File(source.parentFile, "temp_compressed.jpg")
+        FileOutputStream(compressedFile).use { outputStream ->
+            bitmap.compress(Bitmap.CompressFormat.JPEG, quality, outputStream)
+        }
+        bitmap.recycle()
+
+        compressedFile
+    } catch (t: Throwable) {
+        logger.warning("Failed to recompress image ${source.name}: ${t.message}")
+        null
     }
 }
 
@@ -628,28 +630,40 @@ private fun extractImageAndAddToPDFDocument(
     zipFileEntry: ZipEntry,
     document: Document,
     contextHelper: ContextHelper,
-    subStepStatusAction: (String) -> Unit
+    subStepStatusAction: (String) -> Unit,
+    compressOutputPdf: Boolean
 ) {
     try {
         // Create temp file to avoid large memory usage
         val tempFile = File(contextHelper.getCacheDir(), "temp_image")
         tempFile.outputStream().use { tempFileOutputStream ->
             zipFile.getInputStream(zipFileEntry).use { imageInputStream ->
-                tempFileOutputStream.write(imageInputStream.readBytes())
+                imageInputStream.copyTo(tempFileOutputStream)
             }
         }
 
         // Check if it's a WebP file and convert if necessary
-        val imageFileToProcess =
+        val quality = if (compressOutputPdf) COMPRESSED_JPEG_QUALITY else DEFAULT_JPEG_QUALITY
+        val baseImageFile =
             if (zipFileEntry.name.lowercase().endsWith(".webp")) {
                 subStepStatusAction("Converting WebP image: ${zipFileEntry.name}")
                 logger.info("Converting WebP image: ${zipFileEntry.name}")
-                convertWebpToJpeg(tempFile)
+                convertWebpToJpeg(tempFile, quality)
             } else {
                 tempFile
             }
 
-        val pdfImage = Image(ImageDataFactory.create(imageFileToProcess.absolutePath))
+        val processedImageFile = if (compressOutputPdf) {
+            if (baseImageFile == tempFile) {
+                recompressImageToJpeg(baseImageFile, quality) ?: baseImageFile
+            } else {
+                baseImageFile
+            }
+        } else {
+            baseImageFile
+        }
+
+        val pdfImage = Image(ImageDataFactory.create(processedImageFile.absolutePath))
 
         // Adjust the PDF page size to match the image dimensions
         val pdfPageSize = PageSize(pdfImage.imageWidth, pdfImage.imageHeight)
@@ -660,8 +674,11 @@ private fun extractImageAndAddToPDFDocument(
         document.flush()
 
         // Clean up temporary JPEG, which was converted from WebP file
-        if (imageFileToProcess != tempFile) {
-            imageFileToProcess.delete()
+        if (processedImageFile != baseImageFile) {
+            processedImageFile.delete()
+        }
+        if (baseImageFile != tempFile) {
+            baseImageFile.delete()
         }
         tempFile.delete()
     } catch (e: Exception) {
