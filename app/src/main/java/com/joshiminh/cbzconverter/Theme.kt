@@ -1,4 +1,4 @@
-package com.joshiminh.cbzconverter.ui
+package com.joshiminh.cbzconverter
 
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme

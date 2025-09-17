@@ -83,7 +83,6 @@ import androidx.documentfile.provider.DocumentFile
 import com.joshiminh.cbzconverter.backend.ContextHelper
 import com.joshiminh.cbzconverter.backend.MainViewModel
 import com.joshiminh.cbzconverter.backend.MihonMangaEntry
-import com.joshiminh.cbzconverter.ui.CbzConverterTheme
 import kotlin.math.abs
 
 class MainActivity : ComponentActivity() {
@@ -150,11 +149,6 @@ private fun MihonScreen(
         }
 
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Mihon Mode") }
-            )
-        }
     ) { inner ->
         Column(
             modifier = Modifier
