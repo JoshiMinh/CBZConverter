@@ -69,7 +69,6 @@ import com.joshiminh.cbzconverter.components.MihonSelectionCard
 import com.joshiminh.cbzconverter.components.SectionCard
 import com.joshiminh.cbzconverter.components.SelectedFilesList
 import com.joshiminh.cbzconverter.components.Spacer12Divider
-import com.joshiminh.cbzconverter.ui.theme.CbzConverterTheme
 import kotlin.math.abs
 
 class MainActivity : ComponentActivity() {
