@@ -275,7 +275,12 @@ private fun MihonMode(
                             mihonLoadProgress = mihonLoadProgress,
                             mihonManga = mihonManga,
                             selectedFilesUri = selectedFilesUri,
-                            onToggleSelection = { viewModel.toggleFileSelection(it) }
+                            onToggleSelection = { uri, isSelected ->
+                                viewModel.setFileSelection(uri, isSelected)
+                            },
+                            onToggleGroup = { uris, isSelected ->
+                                viewModel.setFilesSelection(uris, isSelected)
+                            }
                         )
 
                         SelectionMode.Manual -> ManualSelectionCard(
@@ -326,8 +331,9 @@ private fun MihonMode(
                 ) {
                     SelectedFilesList(
                         selectedFiles = selectedFilesUri,
+                        resolveInfo = viewModel::getSelectedFileInfo,
                         onMove = { from, to -> viewModel.moveSelectedFile(from, to) },
-                        onRemove = { uri -> viewModel.toggleFileSelection(uri) }
+                        onRemove = { uri -> viewModel.setFileSelection(uri, false) }
                     )
                 }
             }
