@@ -1,13 +1,22 @@
 <h1 align="center">CBZConverter</h1>
 
-An App Created To Convert `.CBZ` Files Into `.PDF` Files, Directly On Your Android Device.
+CBZConverter lets you convert `.cbz` manga archives into `.pdf` files directly on your Android device.
 
-- Single Or Batch Conversion: Convert A Single Or Multiple `.CBZ` Files At Once
-- Merge CBZ Files Into One Convert
-- Sorting Options: Sort Files Based On Their Offset Within The `.CBZ` File Or By File Name (Default In Ascending Order)
-- Page Limits: Set A Maximum Number Of Pages For The PDF And Automatically Split The PDF Into Multiple Parts
-- Two Modes: Normal Mode Picks Files From Storage, Mihon Mode Searches Your Mihon Library
-- Auto Naming: Output PDFs Use Manga Titles And Detected Chapter Numbers, Adding Numeric Suffixes For Duplicates
-- Configurable Options: Memory Batch Size, Output Directory, Sort Order Override, Merge Behavior, PDF Compression, And Chapter-Based Naming
-- Send To Kindle: Quickly Open Amazon's Send-To-Kindle Page
-... And More
+## Features
+- Convert one or many CBZ files in a single run.
+- Merge multiple archives into a single PDF when the files belong to the same series.
+- Keep large series organized with sorting, custom output names, and optional chapter-aware auto naming.
+- Control memory usage with configurable batch sizes and page limits that automatically split huge books into parts.
+- Browse files manually or load your Mihon downloads for quick checkbox selection.
+- Optional PDF compression plus the ability to pick a custom output directory.
+
+## Support the creator
+If you enjoy the app and want to help future development, consider supporting the creator:
+
+- [Patreon](https://patreon.com/u16604577?utm_medium=unknown&utm_source=join_link&utm_campaign=creatorshare_creator&utm_content=copyLink)
+- [Ko-fi](https://ko-fi.com/joshiminh)
+
+## Build
+```
+./gradlew assembleRelease
+```

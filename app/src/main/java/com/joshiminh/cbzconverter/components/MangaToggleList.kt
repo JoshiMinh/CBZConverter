@@ -36,7 +36,8 @@ import com.joshiminh.cbzconverter.backend.MihonMangaEntry
 fun MangaToggleList(
     manga: List<MihonMangaEntry>,
     selectedUris: List<Uri>,
-    onToggle: (Uri) -> Unit
+    onToggleSingle: (Uri, Boolean) -> Unit,
+    onToggleGroup: (List<Uri>, Boolean) -> Unit
 ) {
     if (manga.isEmpty()) {
         Text("No CBZ files found")
@@ -72,11 +73,7 @@ fun MangaToggleList(
                         Checkbox(
                             checked = allSelected,
                             onCheckedChange = { checked ->
-                                entry.files.forEach { file ->
-                                    val contains = selectedUriSet.contains(file.uri)
-                                    if (checked && !contains) onToggle(file.uri)
-                                    else if (!checked && contains) onToggle(file.uri)
-                                }
+                                onToggleGroup(entry.files.map { it.uri }, checked)
                             }
                         )
                         Text(
@@ -105,7 +102,9 @@ fun MangaToggleList(
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Checkbox(
                                         checked = selectedUriSet.contains(file.uri),
-                                        onCheckedChange = { onToggle(file.uri) }
+                                        onCheckedChange = { checked ->
+                                            onToggleSingle(file.uri, checked)
+                                        }
                                     )
                                     Text(
                                         file.name,

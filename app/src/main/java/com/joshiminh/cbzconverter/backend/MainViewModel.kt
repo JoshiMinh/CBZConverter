@@ -11,6 +11,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import java.io.File
+import java.util.LinkedHashSet
 import java.util.logging.Level
 import java.util.logging.Logger
 import kotlinx.coroutines.Dispatchers
@@ -22,15 +23,8 @@ import kotlinx.coroutines.withContext
 
 data class MihonCbzFile(val name: String, val uri: Uri)
 data class MihonMangaEntry(val name: String, val files: List<MihonCbzFile>)
+data class SelectedFileInfo(val displayName: String, val parentName: String?)
 
-/**
- * App state holder and conversion orchestrator.
- *
- * Exposes UI state via StateFlows and provides actions for:
- * - Selecting files/directories (delegates permission checks to PermissionsManager)
- * - Updating configuration overrides
- * - Converting CBZ -> PDF (on a background dispatcher)
- */
 class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
 
     class Factory(private val contextHelper: ContextHelper) : ViewModelProvider.Factory {
@@ -48,15 +42,11 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
         private const val NO_FILE_SELECTED = "No file"
         const val EMPTY_STRING = ""
         private const val DEFAULT_MAX_NUMBER_OF_PAGES = 1_000
-        // Lowered default to ensure large merges still use batch processing when needed
-        // to avoid running out of memory during conversion while keeping merges manageable.
         private const val DEFAULT_BATCH_SIZE = 200
         private const val PREF_MIHON_DIR = "mihon_directory"
     }
 
     private val logger = Logger.getLogger(MainViewModel::class.java.name)
-
-    // ---------------------------- UI State ----------------------------
 
     private val _isCurrentlyConverting = MutableStateFlow(false)
     val isCurrentlyConverting = _isCurrentlyConverting.asStateFlow()
@@ -109,6 +99,9 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
     private val _mihonLoadProgress = MutableStateFlow(0f)
     val mihonLoadProgress = _mihonLoadProgress.asStateFlow()
 
+    private val fileNameCache = mutableMapOf<Uri, String>()
+    private val parentNameCache = mutableMapOf<Uri, String?>()
+    private val parentUriCache = mutableMapOf<Uri, Uri?>()
     private val cbzParentName = mutableMapOf<Uri, String>()
 
     init {
@@ -116,8 +109,6 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
             _mihonDirectoryUri.value = Uri.parse(it)
         }
     }
-
-    // --------------------------- Mutators ----------------------------
 
     fun toggleMergeFilesOverride(newValue: Boolean) {
         _overrideMergeFiles.update { newValue }
@@ -195,15 +186,19 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
 
     fun updateSelectedFileUrisFromUserInput(newSelectedFileUris: List<Uri>) {
         try {
-            _selectedFileUri.update { newSelectedFileUris }
+            val ordered = LinkedHashSet(newSelectedFileUris).toList()
 
-            val canMerge = haveSameParent(newSelectedFileUris)
+            _selectedFileUri.update { ordered }
+
+            cacheMetadataFor(ordered)
+
+            val canMerge = haveSameParent(ordered)
             _canMergeSelection.value = canMerge
 
-            val names = newSelectedFileUris.joinToString(separator = "\n") { it.getFileName() }
+            val names = ordered.joinToString(separator = "\n") { it.displayName() }
 
             updateSelectedFileNameFromUserInput(names)
-            setTask("Selected ${newSelectedFileUris.size} file(s)")
+            setTask("Selected ${ordered.size} file(s)")
             setSubTask("Ready to convert")
             if (!canMerge) {
                 _overrideMergeFiles.update { false }
@@ -215,10 +210,34 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
         }
     }
 
+    fun setFileSelection(uri: Uri, isSelected: Boolean) {
+        setFilesSelection(listOf(uri), isSelected)
+    }
+
+    fun setFilesSelection(uris: Collection<Uri>, isSelected: Boolean) {
+        if (uris.isEmpty()) return
+
+        val current = LinkedHashSet(_selectedFileUri.value)
+        var changed = false
+
+        if (isSelected) {
+            uris.forEach { uri ->
+                if (current.add(uri)) changed = true
+            }
+        } else {
+            uris.forEach { uri ->
+                if (current.remove(uri)) changed = true
+            }
+        }
+
+        if (changed) {
+            updateSelectedFileUrisFromUserInput(current.toList())
+        }
+    }
+
     fun toggleFileSelection(uri: Uri) {
-        val current = _selectedFileUri.value.toMutableList()
-        if (current.contains(uri)) current.remove(uri) else current.add(uri)
-        updateSelectedFileUrisFromUserInput(current)
+        val isSelected = !_selectedFileUri.value.contains(uri)
+        setFileSelection(uri, isSelected)
     }
 
     fun moveSelectedFile(fromIndex: Int, toIndex: Int) {
@@ -238,13 +257,23 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
 
     fun areSelectedFilesFromSameParent(): Boolean = _canMergeSelection.value
 
+    fun getSelectedFileInfo(uri: Uri): SelectedFileInfo {
+        ensureParentMetadata(uri)
+        val name = uri.displayName()
+        val parent = parentNameCache[uri] ?: cbzParentName[uri]
+        return SelectedFileInfo(name, parent)
+    }
+
     private fun haveSameParent(uris: List<Uri>): Boolean {
         if (uris.size <= 1) return true
 
         val expectedName = cbzParentName[uris.first()]
         if (expectedName != null) {
             val mismatch = uris.any { uri ->
-                val name = cbzParentName[uri]
+                val name = cbzParentName[uri] ?: run {
+                    ensureParentMetadata(uri)
+                    cbzParentName[uri]
+                }
                 name != null && name != expectedName
             }
             if (mismatch) return false
@@ -254,21 +283,50 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
             }
         }
 
-        val ctx = contextHelper.getContext()
-        val parentCache = mutableMapOf<Uri, Uri?>()
-        fun resolveParent(uri: Uri): Uri? = parentCache.getOrPut(uri) {
-            DocumentFile.fromSingleUri(ctx, uri)?.parentFile?.uri
-        }
-
-        val expectedParent = resolveParent(uris.first())
+        val expectedParent = resolveParentUri(uris.first())
         return uris.all { uri ->
             val name = cbzParentName[uri]
             if (expectedName != null && name != null) {
                 name == expectedName
             } else {
-                resolveParent(uri) == expectedParent
+                resolveParentUri(uri) == expectedParent
             }
         }
+    }
+
+    private fun resolveParentUri(uri: Uri): Uri? {
+        if (!parentUriCache.containsKey(uri)) {
+            ensureParentMetadata(uri)
+        }
+        return parentUriCache[uri]
+    }
+
+    private fun ensureParentMetadata(uri: Uri) {
+        val needsParent = !parentUriCache.containsKey(uri) || !parentNameCache.containsKey(uri) || !cbzParentName.containsKey(uri)
+        val needsName = !fileNameCache.containsKey(uri)
+        if (!needsParent && !needsName) return
+
+        val document = DocumentFile.fromSingleUri(contextHelper.getContext(), uri)
+
+        if (needsName) {
+            val displayName = document?.name ?: contextHelper.getFileName(uri)
+            fileNameCache[uri] = displayName
+        }
+
+        if (needsParent) {
+            val parent = document?.parentFile
+            val parentUri = parent?.uri
+            val parentName = parent?.name
+            parentUriCache[uri] = parentUri
+            parentNameCache[uri] = parentName
+            if (parentName != null) {
+                cbzParentName.putIfAbsent(uri, parentName)
+            }
+        }
+    }
+
+    private fun cacheMetadataFor(uris: Collection<Uri>) {
+        uris.forEach { uri -> ensureParentMetadata(uri) }
     }
 
     /**
@@ -294,16 +352,21 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
                 }
                 val total = mangaDirs.size.takeIf { it > 0 } ?: 1
                 val result = mutableListOf<MihonMangaEntry>()
-                cbzParentName.clear() // reset before rebuilding
+                cbzParentName.clear()
+                parentNameCache.clear()
+                parentUriCache.clear()
 
                 mangaDirs.forEachIndexed { index, manga ->
                     val mangaName = manga.name ?: "Unknown"
                     val cbzFiles = manga.listFiles()
                         .filter { !it.isDirectory && it.name?.endsWith(".cbz", true) == true }
                         .map { file ->
-                            // remember parent (manga) name for this CBZ
+                            val displayName = file.name ?: "Unknown"
                             cbzParentName[file.uri] = mangaName
-                            MihonCbzFile(file.name ?: "Unknown", file.uri)
+                            parentNameCache[file.uri] = mangaName
+                            parentUriCache[file.uri] = manga.uri
+                            fileNameCache[file.uri] = displayName
+                            MihonCbzFile(displayName, file.uri)
                         }
 
                     if (cbzFiles.isNotEmpty()) {
@@ -318,8 +381,6 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
         }
     }
 
-    // ------------------------ Conversion Flow ------------------------
-
     fun convertToPDF(fileUris: List<Uri>, useParentDirectoryName: Boolean = false) {
         val canMerge = haveSameParent(fileUris)
         if (_overrideMergeFiles.value && !canMerge) {
@@ -329,7 +390,6 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
         }
 
         if (_isCurrentlyConverting.value) {
-            // Avoid double triggers
             return
         }
 
@@ -350,7 +410,6 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
                     fileUri = fileUris,
                     contextHelper = contextHelper,
                     subStepStatusAction = { message ->
-                        // Ensure sub-task updates happen on Main
                         viewModelScope.launch(Dispatchers.Main) {
                             appendSubTask(message)
                         }
@@ -392,8 +451,6 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
         appendTask("Completed")
     }
 
-    // ------------------------ Permissions API ------------------------
-
     fun checkPermissionAndSelectFileAction(
         activity: ComponentActivity,
         filePickerLauncher: ManagedActivityResultLauncher<Array<String>, List<Uri>>
@@ -407,8 +464,6 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
     ) {
         PermissionsManager.checkPermissionAndSelectDirectoryAction(activity, directoryPickerLauncher)
     }
-
-    // --------------------------- Helpers -----------------------------
 
     private suspend fun setConverting(value: Boolean) {
         withContext(Dispatchers.Main) {
@@ -455,7 +510,7 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
 
     private fun getPdfFileNames(filesUri: List<Uri>, useParentDirectoryName: Boolean): List<String> {
         val ctx = contextHelper.getContext()
-        val baseNames = filesUri.map { it.getFileName() }
+        val baseNames = filesUri.map { it.displayName() }
         val baseNamesNoExt = baseNames.map { it.substringBeforeLast('.', it) }
 
         // Resolve placeholders by falling back to parent directory names
@@ -618,6 +673,8 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
         }
     }
 
-    // Extension uses ContextHelper to resolve a display name for the Uri.
-    private fun Uri.getFileName(): String = contextHelper.getFileName(this)
+    private fun Uri.displayName(): String =
+        fileNameCache[this] ?: contextHelper.getFileName(this).also { resolved ->
+            fileNameCache[this] = resolved
+        }
 }

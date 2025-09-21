@@ -63,7 +63,8 @@ fun MihonSelectionCard(
     mihonLoadProgress: Float,
     mihonManga: List<MihonMangaEntry>,
     selectedFilesUri: List<Uri>,
-    onToggleSelection: (Uri) -> Unit
+    onToggleSelection: (Uri, Boolean) -> Unit,
+    onToggleGroup: (List<Uri>, Boolean) -> Unit
 ) {
     Column(Modifier.fillMaxWidth()) {
         Text(
@@ -121,7 +122,8 @@ fun MihonSelectionCard(
             MangaToggleList(
                 manga = filtered,
                 selectedUris = selectedFilesUri,
-                onToggle = onToggleSelection
+                onToggleSingle = onToggleSelection,
+                onToggleGroup = onToggleGroup
             )
         } else {
             Spacer(Modifier.height(12.dp))

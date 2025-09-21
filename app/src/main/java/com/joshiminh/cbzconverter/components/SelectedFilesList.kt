@@ -2,9 +2,9 @@ package com.joshiminh.cbzconverter.components
 
 import android.net.Uri
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -32,15 +32,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.consumeAllChanges
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.documentfile.provider.DocumentFile
+import com.joshiminh.cbzconverter.backend.SelectedFileInfo
 
 @Composable
 fun SelectedFilesList(
     selectedFiles: List<Uri>,
+    resolveInfo: (Uri) -> SelectedFileInfo,
     onMove: (fromIndex: Int, toIndex: Int) -> Unit,
     onRemove: (Uri) -> Unit
 ) {
@@ -51,10 +51,12 @@ fun SelectedFilesList(
         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
     ) {
         itemsIndexed(selectedFiles, key = { _, uri -> uri }) { index, uri ->
+            val info = resolveInfo(uri)
             Column {
                 SelectedFileRow(
                     index = index,
                     uri = uri,
+                    info = info,
                     canMoveUp = index > 0,
                     canMoveDown = index < selectedFiles.lastIndex,
                     onMoveUp = { onMove(index, index - 1) },
@@ -74,20 +76,13 @@ fun SelectedFilesList(
 fun SelectedFileRow(
     index: Int,
     uri: Uri,
+    info: SelectedFileInfo,
     canMoveUp: Boolean,
     canMoveDown: Boolean,
     onMoveUp: () -> Unit,
     onMoveDown: () -> Unit,
     onRemove: () -> Unit
 ) {
-    val context = LocalContext.current
-    val (displayName, parentName) = remember(uri, context) {
-        val document = DocumentFile.fromSingleUri(context, uri)
-        val name = document?.name ?: uri.lastPathSegment ?: "Unknown"
-        val parent = document?.parentFile?.name
-        name to parent
-    }
-
     val dragThreshold = with(LocalDensity.current) { 24.dp.toPx() }
     var accumulatedDrag by remember { mutableStateOf(0f) }
 
@@ -119,11 +114,11 @@ fun SelectedFileRow(
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = "${index + 1}. $displayName",
+                text = "${index + 1}. ${info.displayName}",
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
-            parentName?.takeIf { it.isNotBlank() }?.let {
+            info.parentName?.takeIf { it.isNotBlank() }?.let {
                 Text(
                     text = it,
                     style = MaterialTheme.typography.bodySmall,
