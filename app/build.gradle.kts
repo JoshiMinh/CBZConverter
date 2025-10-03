@@ -11,8 +11,8 @@ android {
         applicationId = "com.joshiminh.cbzconverter"
         minSdk = 24
 
-        versionCode = 1
-        versionName = "1.0.6"
+        versionCode = 5
+        versionName = "5.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
