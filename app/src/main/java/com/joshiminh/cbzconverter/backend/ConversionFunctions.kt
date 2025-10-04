@@ -16,6 +16,7 @@ import com.itextpdf.layout.Document
 import com.itextpdf.layout.element.Image
 import java.io.File
 import java.io.FileOutputStream
+import java.io.OutputStream
 import java.io.IOException
 import java.util.logging.Logger
 import java.util.zip.ZipEntry
@@ -28,6 +29,31 @@ private val logger = Logger.getLogger("com.joshiminh.cbzconverter.ConversionFunc
 private const val COMBINED_TEMP_CBZ_FILE = "combined_temp.cbz"
 private const val DEFAULT_JPEG_QUALITY = 90
 private const val COMPRESSED_JPEG_QUALITY = 75
+
+private fun buildWriterProperties(compressOutputPdf: Boolean): WriterProperties? =
+    if (compressOutputPdf) {
+        WriterProperties().setCompressionLevel(CompressionConstants.BEST_COMPRESSION)
+    } else {
+        null
+    }
+
+private fun createPdfWriter(outputFile: File, compressOutputPdf: Boolean): PdfWriter {
+    val writerProperties = buildWriterProperties(compressOutputPdf)
+    return if (writerProperties != null) {
+        PdfWriter(outputFile.absolutePath, writerProperties)
+    } else {
+        PdfWriter(outputFile.absolutePath)
+    }
+}
+
+private fun createPdfWriter(outputStream: OutputStream, compressOutputPdf: Boolean): PdfWriter {
+    val writerProperties = buildWriterProperties(compressOutputPdf)
+    return if (writerProperties != null) {
+        PdfWriter(outputStream, writerProperties)
+    } else {
+        PdfWriter(outputStream)
+    }
+}
 
 /**
  * Entry point for converting one or multiple CBZ files to PDF(s).
@@ -190,40 +216,37 @@ private fun addEntriesToZip(
     contextHelper: ContextHelper,
     uri: Uri
 ) {
-    try {
-        val tempFile = copyCbzToCacheAndCloseInputStream(
+    val tempFile = try {
+        copyCbzToCacheAndCloseInputStream(
             contextHelper = contextHelper,
             subStepStatusAction = subStepStatusAction,
             uri = uri
         )
-
-        val zipFile = ZipFile(tempFile)
-        subStepStatusAction("Adding ${zipFile.size()} entries from $fileName")
-
-        zipFile.entries().asSequence().forEach { zipEntry ->
-            try {
-                // Use index for ordering by name to continue functioning correctly.
-                // Add left padding so "10_" doesn't sort between "0_" and "1_".
-                // Padding length 9 supports merging up to 999,999,999 files.
-                // Prefix with original fileName to ensure uniqueness across files.
-                val formattedIndex = index.toString().padStart(9, '0')
-                val currentFileUniqueName = "${formattedIndex}_${fileName}_${zipEntry.name}"
-
-                zipOutputStream.putNextEntry(ZipEntry(currentFileUniqueName))
-                zipFile.getInputStream(zipEntry).use { it.copyTo(zipOutputStream) }
-                zipOutputStream.closeEntry()
-                zipOutputStream.flush()
-            } catch (e: Exception) {
-                subStepStatusAction("Error processing file ${zipEntry.name}")
-                logger.warning("Exception message: ${e.message}")
-                logger.warning("Exception stacktrace: ${e.stackTrace.contentToString()}")
-            }
-        }
-
-        zipFile.close()
-        tempFile.delete()
     } catch (_: IOException) {
         return
+    }
+
+    try {
+        ZipFile(tempFile).use { zipFile ->
+            subStepStatusAction("Adding ${zipFile.size()} entries from $fileName")
+
+            zipFile.entries().asSequence().forEach { zipEntry ->
+                try {
+                    val formattedIndex = index.toString().padStart(9, '0')
+                    val currentFileUniqueName = "${formattedIndex}_${fileName}_${zipEntry.name}"
+
+                    zipOutputStream.putNextEntry(ZipEntry(currentFileUniqueName))
+                    zipFile.getInputStream(zipEntry).use { it.copyTo(zipOutputStream) }
+                    zipOutputStream.closeEntry()
+                } catch (e: Exception) {
+                    subStepStatusAction("Error processing file ${zipEntry.name}")
+                    logger.warning("Exception message: ${e.message}")
+                    logger.warning("Exception stacktrace: ${e.stackTrace.contentToString()}")
+                }
+            }
+        }
+    } finally {
+        tempFile.delete()
     }
 }
 
@@ -241,51 +264,55 @@ fun createPdfEitherSingleOrMultiple(
     batchSize: Int,
     compressOutputPdf: Boolean
 ): MutableList<File> {
-    val zipFile = ZipFile(tempFile)
-    val totalNumberOfImages = zipFile.size()
+    val result = try {
+        ZipFile(tempFile).use { zipFile ->
+            val totalNumberOfImages = zipFile.size()
 
-    if (totalNumberOfImages == 0) {
-        subStepStatusAction("No images found in CBZ file: $outputFileName")
-        return mutableListOf()
+            if (totalNumberOfImages == 0) {
+                subStepStatusAction("No images found in CBZ file: $outputFileName")
+                return@use mutableListOf<File>()
+            }
+
+            val zipFileEntriesList = orderZipEntriesByName(zipFile)
+
+            if (!outputDirectory.exists()) outputDirectory.mkdirs()
+
+            if (totalNumberOfImages > maxNumberOfPages) {
+                createMultiplePdfFromCbz(
+                    totalNumberOfImages = totalNumberOfImages,
+                    maxNumberOfPages = maxNumberOfPages,
+                    zipFileEntriesList = zipFileEntriesList,
+                    outputFileName = outputFileName,
+                    outputDirectory = outputDirectory,
+                    subStepStatusAction = subStepStatusAction,
+                    zipFile = zipFile,
+                    outputFiles = outputFiles,
+                    contextHelper = contextHelper,
+                    batchSize = batchSize,
+                    compressOutputPdf = compressOutputPdf
+                )
+            } else {
+                createSinglePdfFromCbz(
+                    totalNumberOfImages = totalNumberOfImages,
+                    zipFileEntriesList = zipFileEntriesList,
+                    outputFileName = outputFileName,
+                    outputDirectory = outputDirectory,
+                    subStepStatusAction = subStepStatusAction,
+                    zipFile = zipFile,
+                    outputFiles = outputFiles,
+                    contextHelper = contextHelper,
+                    batchSize = batchSize,
+                    compressOutputPdf = compressOutputPdf
+                )
+            }
+
+            outputFiles
+        }
+    } finally {
+        tempFile.delete()
     }
 
-    val zipFileEntriesList = orderZipEntriesByName(zipFile)
-
-    if (!outputDirectory.exists()) outputDirectory.mkdirs()
-
-    if (totalNumberOfImages > maxNumberOfPages) {
-        createMultiplePdfFromCbz(
-            totalNumberOfImages = totalNumberOfImages,
-            maxNumberOfPages = maxNumberOfPages,
-            zipFileEntriesList = zipFileEntriesList,
-            outputFileName = outputFileName,
-            outputDirectory = outputDirectory,
-            subStepStatusAction = subStepStatusAction,
-            zipFile = zipFile,
-            outputFiles = outputFiles,
-            contextHelper = contextHelper,
-            batchSize = batchSize,
-            compressOutputPdf = compressOutputPdf
-        )
-    } else {
-        createSinglePdfFromCbz(
-            totalNumberOfImages = totalNumberOfImages,
-            zipFileEntriesList = zipFileEntriesList,
-            outputFileName = outputFileName,
-            outputDirectory = outputDirectory,
-            subStepStatusAction = subStepStatusAction,
-            zipFile = zipFile,
-            outputFiles = outputFiles,
-            contextHelper = contextHelper,
-            batchSize = batchSize,
-            compressOutputPdf = compressOutputPdf
-        )
-    }
-
-    zipFile.close()
-    tempFile.delete()
-
-    return outputFiles
+    return result
 }
 
 /**
@@ -304,10 +331,11 @@ private fun copyCbzToCacheAndCloseInputStream(
         throw IOException("Could not copy CBZ file to cache: ${uri.path}")
     }
 
-    tempFile.outputStream().use { outputStream ->
-        inputStream.copyTo(outputStream)
+    inputStream.use { stream ->
+        tempFile.outputStream().use { outputStream ->
+            stream.copyTo(outputStream)
+        }
     }
-    inputStream.close()
 
     return tempFile
 }
@@ -334,16 +362,9 @@ private fun createPdfFromImageList(
     messageFormat: (Int) -> String,
     compressOutputPdf: Boolean
 ) {
-    val writerProperties = if (compressOutputPdf) {
-        WriterProperties().setCompressionLevel(CompressionConstants.BEST_COMPRESSION)
-    } else null
-    val pdfWriter = if (writerProperties != null) {
-        PdfWriter(outputFile.absolutePath, writerProperties)
-    } else {
-        PdfWriter(outputFile.absolutePath)
-    }
+    if (imagesToProcess.isEmpty()) return
 
-    pdfWriter.use { writer ->
+    createPdfWriter(outputFile, compressOutputPdf).use { writer ->
         PdfDocument(writer).use { pdfDoc ->
             Document(pdfDoc, PageSize.LETTER, true).use { document ->
                 setMarginForDocument(document)
@@ -359,10 +380,6 @@ private fun createPdfFromImageList(
                         compressOutputPdf = compressOutputPdf
                     )
                 }
-
-                pdfDoc.writer.flush()
-                writer.flush()
-                document.close()
             }
         }
     }
@@ -541,29 +558,26 @@ private fun mergePdfFiles(
     compressOutputPdf: Boolean
 ) {
     val outputFile = File(outputDirectory, outputFileName)
-    val outputStream = outputFile.outputStream()
-    val writerProperties = if (compressOutputPdf) {
-        WriterProperties().setCompressionLevel(CompressionConstants.BEST_COMPRESSION)
-    } else null
-    val pdfWriter = if (writerProperties != null) {
-        PdfWriter(outputStream, writerProperties)
-    } else {
-        PdfWriter(outputStream)
-    }
-    val finalPdfDocument = PdfDocument(pdfWriter)
-    val pdfMerger = PdfMerger(finalPdfDocument)
+    outputFile.outputStream().use { outputStream ->
+        createPdfWriter(outputStream, compressOutputPdf).use { writer ->
+            PdfDocument(writer).use { finalPdfDocument ->
+                val pdfMerger = PdfMerger(finalPdfDocument)
 
-    outputFiles.forEach { file ->
-        PdfDocument(PdfReader(file)).use { pdfDocument ->
-            pdfMerger.merge(pdfDocument, 1, pdfDocument.numberOfPages)
-            finalPdfDocument.flushCopiedObjects(pdfDocument)
-            outputStream.flush()
-            pdfWriter.flush()
+                try {
+                    outputFiles.forEach { file ->
+                        PdfDocument(PdfReader(file)).use { pdfDocument ->
+                            pdfMerger.merge(pdfDocument, 1, pdfDocument.numberOfPages)
+                            finalPdfDocument.flushCopiedObjects(pdfDocument)
+                        }
+                        file.delete()
+                    }
+                } finally {
+                    pdfMerger.close()
+                }
+            }
         }
-        file.delete()
     }
 
-    pdfMerger.close()
     outputFiles.clear()
     outputFiles.add(outputFile)
 }
