@@ -37,4 +37,3 @@ storage = { module = "com.anggrayudi:storage", version.ref = "storage" }
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 jetbrains-kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
-
