@@ -112,6 +112,12 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
 
     fun toggleMergeFilesOverride(newValue: Boolean) {
         _overrideMergeFiles.update { newValue }
+        if (newValue && !_canMergeSelection.value) {
+            contextHelper.showToast(
+                "Warning: merging files from different manga.",
+                Toast.LENGTH_LONG
+            )
+        }
     }
 
     fun toggleCompressOutputPdf(newValue: Boolean) {
@@ -193,6 +199,7 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
             cacheMetadataFor(ordered)
 
             val canMerge = haveSameParent(ordered)
+            val hadOverrideEnabled = _overrideMergeFiles.value
             _canMergeSelection.value = canMerge
 
             val names = ordered.joinToString(separator = "\n") { it.displayName() }
@@ -200,8 +207,11 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
             updateSelectedFileNameFromUserInput(names)
             setTask("Selected ${ordered.size} file(s)")
             setSubTask("Ready to convert")
-            if (!canMerge) {
-                _overrideMergeFiles.update { false }
+            if (hadOverrideEnabled && !canMerge) {
+                contextHelper.showToast(
+                    "Warning: merging files from different manga.",
+                    Toast.LENGTH_LONG
+                )
             }
         } catch (_: Exception) {
             appendTask("File selection failed. Cleared")
@@ -384,9 +394,11 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
     fun convertToPDF(fileUris: List<Uri>, useParentDirectoryName: Boolean = false) {
         val canMerge = haveSameParent(fileUris)
         if (_overrideMergeFiles.value && !canMerge) {
-            appendTask("Merge disabled: files from different manga")
-            contextHelper.showToast("Cannot merge files from different manga", Toast.LENGTH_LONG)
-            _overrideMergeFiles.update { false }
+            appendTask("Warning: merging files from different manga")
+            contextHelper.showToast(
+                "Warning: merging files from different manga.",
+                Toast.LENGTH_LONG
+            )
         }
 
         if (_isCurrentlyConverting.value) {
@@ -583,7 +595,7 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
             }
             "$mangaName$suffix.pdf"
         }.toMutableList().apply {
-            if (_overrideMergeFiles.value && haveSameParent(filesUri)) {
+            if (_overrideMergeFiles.value && filesUri.isNotEmpty()) {
                 val base = mangaNames.first()
                 if (_autoNameWithChapters.value) {
                     val chapterPairs = chapters.mapIndexedNotNull { _, ch ->

@@ -402,13 +402,13 @@ private fun MihonMode(
                             title = "Merge All Files Into One",
                             infoText = "Combine all selected CBZ files into a single PDF. If no custom name is set, the first file's name is used.",
                             checked = overrideMergeFiles,
-                            enabled = !isCurrentlyConverting && canMergeSelection
+                            enabled = !isCurrentlyConverting
                         ) { viewModel.toggleMergeFilesOverride(it) }
 
                         if (!canMergeSelection && selectedFilesUri.size > 1) {
                             Spacer(Modifier.height(4.dp))
                             Text(
-                                "Cannot merge files from different manga.",
+                                "Warning: selected files come from different manga. Double-check the order before merging.",
                                 color = MaterialTheme.colorScheme.error,
                                 style = MaterialTheme.typography.bodySmall
                             )
