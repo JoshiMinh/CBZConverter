@@ -199,12 +199,6 @@ private fun MihonMode(
     val focusManager = LocalFocusManager.current
     var selectionMode by rememberSaveable { mutableStateOf(SelectionMode.Mihon) }
 
-    LaunchedEffect(canMergeSelection, overrideMergeFiles) {
-        if (!canMergeSelection && overrideMergeFiles) {
-            viewModel.toggleMergeFilesOverride(false)
-        }
-    }
-
     LaunchedEffect(mihonDirectoryUri, isLoadingMihonManga, mihonManga) {
         if (mihonDirectoryUri != null && mihonManga.isEmpty() && !isLoadingMihonManga) {
             viewModel.refreshMihonManga()
