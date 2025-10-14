@@ -12,7 +12,7 @@ android {
         minSdk = 24
 
         versionCode = 5
-        versionName = "5.0"
+        versionName = "5.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
