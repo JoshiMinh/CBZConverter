@@ -112,12 +112,6 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
 
     fun toggleMergeFilesOverride(newValue: Boolean) {
         _overrideMergeFiles.update { newValue }
-        if (newValue && !_canMergeSelection.value) {
-            contextHelper.showToast(
-                "Warning: merging files from different manga.",
-                Toast.LENGTH_LONG
-            )
-        }
     }
 
     fun toggleCompressOutputPdf(newValue: Boolean) {
@@ -198,21 +192,13 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
 
             cacheMetadataFor(ordered)
 
-            val canMerge = haveSameParent(ordered)
-            val hadOverrideEnabled = _overrideMergeFiles.value
-            _canMergeSelection.value = canMerge
+            _canMergeSelection.value = haveSameParent(ordered)
 
             val names = ordered.joinToString(separator = "\n") { it.displayName() }
 
             updateSelectedFileNameFromUserInput(names)
             setTask("Selected ${ordered.size} file(s)")
             setSubTask("Ready to convert")
-            if (hadOverrideEnabled && !canMerge) {
-                contextHelper.showToast(
-                    "Warning: merging files from different manga.",
-                    Toast.LENGTH_LONG
-                )
-            }
         } catch (_: Exception) {
             appendTask("File selection failed. Cleared")
             _selectedFileUri.update { emptyList() }
@@ -392,15 +378,6 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
     }
 
     fun convertToPDF(fileUris: List<Uri>, useParentDirectoryName: Boolean = false) {
-        val canMerge = haveSameParent(fileUris)
-        if (_overrideMergeFiles.value && !canMerge) {
-            appendTask("Warning: merging files from different manga")
-            contextHelper.showToast(
-                "Warning: merging files from different manga.",
-                Toast.LENGTH_LONG
-            )
-        }
-
         if (_isCurrentlyConverting.value) {
             return
         }
