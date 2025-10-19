@@ -2,7 +2,6 @@ package com.joshiminh.cbzconverter.backend
 
 import android.content.Intent
 import android.net.Uri
-import android.os.Environment
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.ManagedActivityResultLauncher
@@ -10,7 +9,6 @@ import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import java.io.File
 import java.util.LinkedHashSet
 import java.util.logging.Level
 import java.util.logging.Logger
@@ -425,13 +423,14 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
         }
     }
 
-    private suspend fun handlePdfResult(pdfFiles: List<File>) {
+    private suspend fun handlePdfResult(pdfFiles: List<DocumentFile>) {
         if (pdfFiles.isEmpty()) {
             throw IllegalStateException("No PDFs created")
         }
 
         val msg = if (pdfFiles.size == 1) {
-            "Saved: ${pdfFiles.first().absolutePath}"
+            val saved = pdfFiles.first()
+            "Saved: ${saved.name ?: saved.uri}"
         } else {
             "Saved: ${pdfFiles.size} PDFs"
         }
@@ -624,8 +623,10 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
         return placeholders.contains(base)
     }
 
-    private fun resolveFileNameConflicts(names: List<String>, outputFolder: File): List<String> {
-        val existing = outputFolder.list()?.toMutableSet() ?: mutableSetOf()
+    private fun resolveFileNameConflicts(names: List<String>, outputFolder: DocumentFile): List<String> {
+        val existing = outputFolder.listFiles()
+            .mapNotNull { it.name }
+            .toMutableSet()
         return names.map { base ->
             var candidate = base
             val dotIndex = candidate.lastIndexOf('.')
@@ -641,13 +642,11 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
         }
     }
 
-    @Suppress("DEPRECATION")
-    private fun getOutputFolder(): File {
-        val defaultDownloads = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+    private fun getOutputFolder(): DocumentFile {
         overrideOutputDirectoryUri.value?.let { uri ->
-            contextHelper.getOutputFolderUri(uri)?.let { return it }
+            contextHelper.getDocumentTree(uri)?.let { return it }
         }
-        return defaultDownloads
+        return contextHelper.getDefaultDownloadsTree()
     }
 
     private suspend fun showToastAndTask(

@@ -1,16 +1,18 @@
 package com.joshiminh.cbzconverter.backend
 
 import android.content.Context
+import android.content.Intent
 import android.content.SharedPreferences
 import android.net.Uri
-import android.os.Environment
+import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import android.widget.Toast
 import androidx.annotation.StringRes
+import androidx.documentfile.provider.DocumentFile
 import com.anggrayudi.storage.file.DocumentFileCompat
-import com.anggrayudi.storage.file.getAbsolutePath
 import java.io.File
 import java.io.InputStream
+import java.io.IOException
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 
@@ -73,21 +75,52 @@ class ContextHelper(private val context: Context) {
     fun showToast(@StringRes resId: Int, length: Int = Toast.LENGTH_SHORT) =
         Toast.makeText(context, resId, length).show()
 
-    fun getOutputFolderUri(uri: Uri?): File? {
-        if (uri == null) return null
-        val doc = DocumentFileCompat.fromUri(context, uri) ?: return null
-        val abs = doc.getAbsolutePath(context)
-        return File(abs)
+    fun getDocumentTree(uri: Uri?): DocumentFile? =
+        uri?.let { DocumentFileCompat.fromUri(context, it) }
+
+    fun getDefaultDownloadsTree(): DocumentFile {
+        val authority = "com.android.externalstorage.documents"
+        val treeUri = DocumentsContract.buildTreeDocumentUri(authority, "primary:Download")
+        val resolver = context.contentResolver
+        val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+        runCatching { resolver.takePersistableUriPermission(treeUri, flags) }
+
+        val documentId = DocumentsContract.getTreeDocumentId(treeUri)
+        val documentUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, documentId)
+
+        return DocumentFileCompat.fromUri(context, documentUri)
+            ?: DocumentFileCompat.fromUri(context, treeUri)
+            ?: throw IllegalStateException("Unable to access Downloads directory")
+    }
+
+    @Throws(IOException::class)
+    fun createDocumentFile(parent: DocumentFile, fileName: String, mimeType: String): DocumentFile {
+        parent.findFile(fileName)?.let { existing ->
+            if (existing.exists()) {
+                if (!existing.delete()) {
+                    throw IOException("Unable to replace existing file: $fileName")
+                }
+            }
+        }
+
+        val newDocumentUri = DocumentsContract.createDocument(
+            context.contentResolver,
+            parent.uri,
+            mimeType,
+            fileName
+        ) ?: throw IOException("Unable to create file: $fileName")
+
+        return DocumentFile.fromSingleUri(context, newDocumentUri)
+            ?: throw IOException("Unable to resolve created file: $fileName")
     }
 
     fun openInputStream(uri: Uri): InputStream? =
         context.contentResolver.openInputStream(uri)?.buffered()
 
-    fun getCacheDir(): File = context.cacheDir
+    fun openOutputStream(uri: Uri, mode: String = "w") =
+        context.contentResolver.openOutputStream(uri, mode)?.buffered()
 
-    @Suppress("DEPRECATION")
-    fun getExternalStoragePublicDirectory(type: String): File =
-        Environment.getExternalStoragePublicDirectory(type)
+    fun getCacheDir(): File = context.cacheDir
 
     fun getPreferences(): SharedPreferences =
         context.getSharedPreferences("cbz_converter_prefs", Context.MODE_PRIVATE)
