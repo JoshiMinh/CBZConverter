@@ -15,6 +15,7 @@ import com.itextpdf.kernel.utils.PdfMerger
 import com.itextpdf.layout.Document
 import com.itextpdf.layout.element.Image
 import java.io.File
+import java.io.FileOutputStream
 import java.io.OutputStream
 import java.io.IOException
 import java.util.logging.Logger
@@ -443,7 +444,11 @@ private fun createMultiplePdfFromCbz(
 
     for (index in 0 until amountOfFilesToExport) {
         val newOutputFileName = outputFileName.replace(".pdf", "_part-${index + 1}.pdf")
-        val outputFile = contextHelper.createDocumentFile(outputDirectory, newOutputFileName)
+        val outputFile = contextHelper.createDocumentFile(
+            outputDirectory,
+            newOutputFileName,
+            "application/pdf"
+        )
 
         val (startIndex, endIndex) = calculateRange(index, maxNumberOfPages, totalNumberOfImages)
         val imagesToProcess = zipFileEntriesList.subList(startIndex, endIndex)
@@ -561,7 +566,11 @@ private fun createSinglePdfFromCbz(
     compressOutputPdf: Boolean
 ) {
     if (totalNumberOfImages > batchSize) {
-        val target = contextHelper.createDocumentFile(outputDirectory, outputFileName)
+        val target = contextHelper.createDocumentFile(
+            outputDirectory,
+            outputFileName,
+            "application/pdf"
+        )
         try {
             val processedFile = createPdfWithBatchProcessing(
                 totalNumberOfImages = totalNumberOfImages,
@@ -581,7 +590,11 @@ private fun createSinglePdfFromCbz(
         return
     }
 
-    val outputFile = contextHelper.createDocumentFile(outputDirectory, outputFileName)
+    val outputFile = contextHelper.createDocumentFile(
+        outputDirectory,
+        outputFileName,
+        "application/pdf"
+    )
 
     try {
         createPdfFromImageList(
