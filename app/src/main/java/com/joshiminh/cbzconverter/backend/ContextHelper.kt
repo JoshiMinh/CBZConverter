@@ -1,7 +1,6 @@
 package com.joshiminh.cbzconverter.backend
 
 import android.content.Context
-import android.content.Intent
 import android.content.SharedPreferences
 import android.net.Uri
 import android.provider.DocumentsContract
@@ -78,19 +77,27 @@ class ContextHelper(private val context: Context) {
     fun getDocumentTree(uri: Uri?): DocumentFile? =
         uri?.let { DocumentFileCompat.fromUri(context, it) }
 
-    fun getDefaultDownloadsTree(): DocumentFile {
+    fun getDefaultDownloadsTree(): DocumentFile? {
         val authority = "com.android.externalstorage.documents"
         val treeUri = DocumentsContract.buildTreeDocumentUri(authority, "primary:Download")
         val resolver = context.contentResolver
-        val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-        runCatching { resolver.takePersistableUriPermission(treeUri, flags) }
 
         val documentId = DocumentsContract.getTreeDocumentId(treeUri)
         val documentUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, documentId)
 
+        val hasPersistedGrant = resolver.persistedUriPermissions.any { permission ->
+            val hasReadWrite = permission.isReadPermission && permission.isWritePermission
+            val targetsDownloads = permission.uri == treeUri || permission.uri == documentUri
+            hasReadWrite && targetsDownloads
+        }
+
+        if (!hasPersistedGrant) {
+            return null
+        }
+
         return DocumentFileCompat.fromUri(context, documentUri)
             ?: DocumentFileCompat.fromUri(context, treeUri)
-            ?: throw IllegalStateException("Unable to access Downloads directory")
+            ?: return null
     }
 
     @Throws(IOException::class)

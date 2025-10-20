@@ -79,6 +79,9 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
     private val _overrideOutputDirectoryUri = MutableStateFlow<Uri?>(null)
     val overrideOutputDirectoryUri = _overrideOutputDirectoryUri.asStateFlow()
 
+    private val _hasWritableOutputDirectory = MutableStateFlow(false)
+    val hasWritableOutputDirectory = _hasWritableOutputDirectory.asStateFlow()
+
     private val _compressOutputPdf = MutableStateFlow(false)
     val compressOutputPdf = _compressOutputPdf.asStateFlow()
 
@@ -106,6 +109,7 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
         contextHelper.getPreferences().getString(PREF_MIHON_DIR, null)?.let {
             _mihonDirectoryUri.value = Uri.parse(it)
         }
+        refreshOutputDirectoryAvailability()
     }
 
     fun toggleMergeFilesOverride(newValue: Boolean) {
@@ -175,6 +179,7 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
     fun updateOverrideOutputPathFromUserInput(newOverrideOutputPath: Uri) {
         _overrideOutputDirectoryUri.update { newOverrideOutputPath }
         appendTask("Output folder: set")
+        refreshOutputDirectoryAvailability()
     }
 
     fun updateUpdateSelectedFileUriFromUserInput(newSelectedFileUris: List<Uri>) {
@@ -380,11 +385,24 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
             return
         }
 
+        refreshOutputDirectoryAvailability()
+
+        val outputFolder = getOutputFolder()
+        if (outputFolder == null) {
+            viewModelScope.launch {
+                showToastAndTask(
+                    message = "Select an output directory before exporting.",
+                    toastLength = Toast.LENGTH_LONG,
+                    loggerLevel = Level.WARNING
+                )
+            }
+            return
+        }
+
         viewModelScope.launch(Dispatchers.IO) {
             setConverting(true)
 
             try {
-                val outputFolder = getOutputFolder()
                 val pdfFileNames = resolveFileNameConflicts(
                     getPdfFileNames(fileUris, useParentDirectoryName),
                     outputFolder
@@ -642,12 +660,35 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
         }
     }
 
-    private fun getOutputFolder(): DocumentFile {
+    private fun getOutputFolder(): DocumentFile? {
         overrideOutputDirectoryUri.value?.let { uri ->
-            contextHelper.getDocumentTree(uri)?.let { return it }
+            contextHelper.getDocumentTree(uri)?.let { directory ->
+                if (directory.isWritableDirectory()) {
+                    return directory
+                }
+            }
         }
-        return contextHelper.getDefaultDownloadsTree()
+
+        val downloads = contextHelper.getDefaultDownloadsTree()
+        if (downloads.isWritableDirectory()) {
+            return downloads
+        }
+
+        return null
     }
+
+    private fun refreshOutputDirectoryAvailability() {
+        val overrideAvailable = overrideOutputDirectoryUri.value?.let { uri ->
+            contextHelper.getDocumentTree(uri).isWritableDirectory()
+        } ?: false
+
+        val defaultAvailable = contextHelper.getDefaultDownloadsTree().isWritableDirectory()
+
+        _hasWritableOutputDirectory.value = overrideAvailable || defaultAvailable
+    }
+
+    private fun DocumentFile?.isWritableDirectory(): Boolean =
+        this?.let { it.exists() && it.isDirectory && it.canWrite() } ?: false
 
     private suspend fun showToastAndTask(
         message: String,
