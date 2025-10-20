@@ -32,6 +32,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -225,8 +226,20 @@ private fun MihonMode(
                 SelectionMode.Manual -> R.drawable.cbz
             },
             action = {
-                IconButton(onClick = { viewModel.updateSelectedFileUrisFromUserInput(emptyList()) }) {
-                    Icon(Icons.Filled.Delete, contentDescription = "Clear selection")
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = {
+                        selectionMode = if (selectionMode == SelectionMode.Mihon) {
+                            SelectionMode.Manual
+                        } else {
+                            SelectionMode.Mihon
+                        }
+                    }) {
+                        Icon(Icons.Filled.SwapHoriz, contentDescription = "Switch input mode")
+                    }
+
+                    IconButton(onClick = { viewModel.updateSelectedFileUrisFromUserInput(emptyList()) }) {
+                        Icon(Icons.Filled.Delete, contentDescription = "Clear selection")
+                    }
                 }
             }
         ) {
