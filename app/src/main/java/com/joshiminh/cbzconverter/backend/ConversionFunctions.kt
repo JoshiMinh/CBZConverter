@@ -3,7 +3,7 @@ package com.joshiminh.cbzconverter.backend
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
-import android.os.Environment
+import androidx.documentfile.provider.DocumentFile
 import com.itextpdf.io.image.ImageDataFactory
 import com.itextpdf.kernel.geom.PageSize
 import com.itextpdf.kernel.pdf.CompressionConstants
@@ -16,8 +16,8 @@ import com.itextpdf.layout.Document
 import com.itextpdf.layout.element.Image
 import java.io.File
 import java.io.FileOutputStream
-import java.io.OutputStream
 import java.io.IOException
+import java.io.OutputStream
 import java.util.logging.Logger
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
@@ -67,11 +67,11 @@ fun convertCbzToPdf(
     outputFileNames: List<String> = List(fileUri.size) { index -> "output_$index.pdf" },
     overrideMergeFiles: Boolean = false,
     compressOutputPdf: Boolean = false,
-    outputDirectory: File = contextHelper.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-): List<File> {
+    outputDirectory: DocumentFile
+): List<DocumentFile> {
     if (fileUri.isEmpty()) return mutableListOf()
 
-    val outputFiles = mutableListOf<File>()
+    val outputFiles = mutableListOf<DocumentFile>()
     contextHelper.getCacheDir().let { cacheDir ->
         if (cacheDir.exists()) {
             cacheDir.deleteRecursively()
@@ -114,12 +114,12 @@ private fun applyEachFileAndCreatePdf(
     outputFileNames: List<String>,
     contextHelper: ContextHelper,
     subStepStatusAction: (String) -> Unit,
-    outputFiles: MutableList<File>,
-    outputDirectory: File,
+    outputFiles: MutableList<DocumentFile>,
+    outputDirectory: DocumentFile,
     maxNumberOfPages: Int,
     batchSize: Int,
     compressOutputPdf: Boolean
-): MutableList<File> {
+): MutableList<DocumentFile> {
     fileUri.forEachIndexed { index, uri ->
         val outputFileName = outputFileNames[index]
 
@@ -157,12 +157,12 @@ private fun mergeFilesAndCreatePdf(
     fileUri: List<Uri>,
     subStepStatusAction: (String) -> Unit,
     outputFileNames: List<String>,
-    outputFiles: MutableList<File>,
-    outputDirectory: File,
+    outputFiles: MutableList<DocumentFile>,
+    outputDirectory: DocumentFile,
     maxNumberOfPages: Int,
     batchSize: Int,
     compressOutputPdf: Boolean
-): MutableList<File> {
+): MutableList<DocumentFile> {
     subStepStatusAction("Creating $COMBINED_TEMP_CBZ_FILE in Cache")
     val combinedTempFile = File(contextHelper.getCacheDir(), COMBINED_TEMP_CBZ_FILE)
 
@@ -257,25 +257,27 @@ fun createPdfEitherSingleOrMultiple(
     tempFile: File,
     subStepStatusAction: (String) -> Unit,
     outputFileName: String,
-    outputDirectory: File,
+    outputDirectory: DocumentFile,
     maxNumberOfPages: Int,
-    outputFiles: MutableList<File>,
+    outputFiles: MutableList<DocumentFile>,
     contextHelper: ContextHelper,
     batchSize: Int,
     compressOutputPdf: Boolean
-): MutableList<File> {
+): MutableList<DocumentFile> {
     val result = try {
         ZipFile(tempFile).use { zipFile ->
             val totalNumberOfImages = zipFile.size()
 
             if (totalNumberOfImages == 0) {
                 subStepStatusAction("No images found in CBZ file: $outputFileName")
-                return@use mutableListOf<File>()
+                return@use mutableListOf<DocumentFile>()
             }
 
             val zipFileEntriesList = orderZipEntriesByName(zipFile)
 
-            if (!outputDirectory.exists()) outputDirectory.mkdirs()
+            if (!outputDirectory.exists() || !outputDirectory.isDirectory) {
+                throw IOException("Output directory unavailable")
+            }
 
             if (totalNumberOfImages > maxNumberOfPages) {
                 createMultiplePdfFromCbz(
@@ -355,6 +357,43 @@ internal fun calculateRange(index: Int, pageSize: Int, totalItems: Int): Pair<In
  */
 private fun createPdfFromImageList(
     imagesToProcess: List<ZipEntry>,
+    outputFile: DocumentFile,
+    zipFile: ZipFile,
+    contextHelper: ContextHelper,
+    subStepStatusAction: (String) -> Unit,
+    messageFormat: (Int) -> String,
+    compressOutputPdf: Boolean
+) {
+    if (imagesToProcess.isEmpty()) return
+
+    val outputStream = contextHelper.openOutputStream(outputFile.uri)
+        ?: throw IOException("Unable to open output stream for ${outputFile.uri}")
+
+    outputStream.use { stream ->
+        createPdfWriter(stream, compressOutputPdf).use { writer ->
+            PdfDocument(writer).use { pdfDoc ->
+                Document(pdfDoc, PageSize.LETTER, true).use { document ->
+                    setMarginForDocument(document)
+
+                    imagesToProcess.forEachIndexed { index, imageFile ->
+                        subStepStatusAction(messageFormat(index + 1))
+                        extractImageAndAddToPDFDocument(
+                            zipFile = zipFile,
+                            zipFileEntry = imageFile,
+                            document = document,
+                            contextHelper = contextHelper,
+                            subStepStatusAction = subStepStatusAction,
+                            compressOutputPdf = compressOutputPdf
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun createPdfFromImageListToFile(
+    imagesToProcess: List<ZipEntry>,
     outputFile: File,
     zipFile: ZipFile,
     contextHelper: ContextHelper,
@@ -393,10 +432,10 @@ private fun createMultiplePdfFromCbz(
     maxNumberOfPages: Int,
     zipFileEntriesList: List<ZipEntry>,
     outputFileName: String,
-    outputDirectory: File?,
+    outputDirectory: DocumentFile,
     subStepStatusAction: (String) -> Unit,
     zipFile: ZipFile,
-    outputFiles: MutableList<File>,
+    outputFiles: MutableList<DocumentFile>,
     contextHelper: ContextHelper,
     batchSize: Int,
     compressOutputPdf: Boolean
@@ -405,7 +444,11 @@ private fun createMultiplePdfFromCbz(
 
     for (index in 0 until amountOfFilesToExport) {
         val newOutputFileName = outputFileName.replace(".pdf", "_part-${index + 1}.pdf")
-        val outputFile = File(outputDirectory, newOutputFileName)
+        val outputFile = contextHelper.createDocumentFile(
+            outputDirectory,
+            newOutputFileName,
+            "application/pdf"
+        )
 
         val (startIndex, endIndex) = calculateRange(index, maxNumberOfPages, totalNumberOfImages)
         val imagesToProcess = zipFileEntriesList.subList(startIndex, endIndex)
@@ -413,34 +456,43 @@ private fun createMultiplePdfFromCbz(
 
         if (imagesInThisPart > batchSize) {
             // Use memory batch processing for this part
-            val processedFile = createPdfWithBatchProcessing(
-                totalNumberOfImages = imagesInThisPart,
-                zipFileEntriesList = imagesToProcess,
-                outputFileName = newOutputFileName,
-                outputDirectory = outputDirectory,
-                subStepStatusAction = { message ->
-                    subStepStatusAction("Processing part ${index + 1} of $amountOfFilesToExport - $message")
-                },
-                zipFile = zipFile,
-                contextHelper = contextHelper,
-                batchSize = batchSize,
-                compressOutputPdf = compressOutputPdf
-            )
-            outputFiles.add(processedFile)
+            try {
+                val processedFile = createPdfWithBatchProcessing(
+                    totalNumberOfImages = imagesInThisPart,
+                    zipFileEntriesList = imagesToProcess,
+                    subStepStatusAction = { message ->
+                        subStepStatusAction("Processing part ${index + 1} of $amountOfFilesToExport - $message")
+                    },
+                    zipFile = zipFile,
+                    contextHelper = contextHelper,
+                    batchSize = batchSize,
+                    compressOutputPdf = compressOutputPdf,
+                    targetDocument = outputFile
+                )
+                outputFiles.add(processedFile)
+            } catch (t: Throwable) {
+                outputFile.delete()
+                throw t
+            }
         } else {
             // Process normally without memory batch processing
-            createPdfFromImageList(
-                imagesToProcess = imagesToProcess,
-                outputFile = outputFile,
-                zipFile = zipFile,
-                contextHelper = contextHelper,
-                subStepStatusAction = subStepStatusAction,
-                messageFormat = { currentImageIndex ->
-                    "Processing part ${index + 1} of $amountOfFilesToExport - Processing image file ${startIndex + currentImageIndex} of $totalNumberOfImages"
-                },
-                compressOutputPdf = compressOutputPdf
-            )
-            outputFiles.add(outputFile)
+            try {
+                createPdfFromImageList(
+                    imagesToProcess = imagesToProcess,
+                    outputFile = outputFile,
+                    zipFile = zipFile,
+                    contextHelper = contextHelper,
+                    subStepStatusAction = subStepStatusAction,
+                    messageFormat = { currentImageIndex ->
+                        "Processing part ${index + 1} of $amountOfFilesToExport - Processing image file ${startIndex + currentImageIndex} of $totalNumberOfImages"
+                    },
+                    compressOutputPdf = compressOutputPdf
+                )
+                outputFiles.add(outputFile)
+            } catch (t: Throwable) {
+                outputFile.delete()
+                throw t
+            }
         }
     }
 }
@@ -451,14 +503,13 @@ private fun createMultiplePdfFromCbz(
 private fun createPdfWithBatchProcessing(
     totalNumberOfImages: Int,
     zipFileEntriesList: List<ZipEntry>,
-    outputFileName: String,
-    outputDirectory: File?,
     subStepStatusAction: (String) -> Unit,
     zipFile: ZipFile,
     contextHelper: ContextHelper,
     batchSize: Int,
-    compressOutputPdf: Boolean
-): File {
+    compressOutputPdf: Boolean,
+    targetDocument: DocumentFile
+): DocumentFile {
     // Used to circumvent the 512 MB max RAM usage on Android apps:
     // split the total files into memory batches and then merge them into a single PDF,
     // keeping at most 'batchSize' pages in memory at a time.
@@ -472,31 +523,31 @@ private fun createPdfWithBatchProcessing(
         val (startIndex, endIndex) = calculateRange(memoryBatchIndex, batchSize, totalNumberOfImages)
         val imagesToProcess = zipFileEntriesList.subList(startIndex, endIndex)
 
-        createPdfFromImageList(
+        createPdfFromImageListToFile(
             imagesToProcess = imagesToProcess,
             outputFile = tempBatchFile,
             zipFile = zipFile,
             contextHelper = contextHelper,
             subStepStatusAction = subStepStatusAction,
-                messageFormat = { currentImageIndex ->
-                    "Processing memory batch ${memoryBatchIndex + 1} of $amountOfMemoryBatches - Processing image file ${startIndex + currentImageIndex} of $totalNumberOfImages"
-                },
-                compressOutputPdf = compressOutputPdf
-            )
+            messageFormat = { currentImageIndex ->
+                "Processing memory batch ${memoryBatchIndex + 1} of $amountOfMemoryBatches - Processing image file ${startIndex + currentImageIndex} of $totalNumberOfImages"
+            },
+            compressOutputPdf = compressOutputPdf
+        )
 
         tempOutputFiles.add(tempBatchFile)
     }
 
     // Merge all memory batch files into the final output file
     mergePdfFiles(
-        outputDirectory = outputDirectory,
-        outputFileName = outputFileName,
+        targetDocument = targetDocument,
         outputFiles = tempOutputFiles,
-        compressOutputPdf = compressOutputPdf
+        compressOutputPdf = compressOutputPdf,
+        contextHelper = contextHelper
     )
 
     // Return the final merged file
-    return File(outputDirectory, outputFileName)
+    return targetDocument
 }
 
 /**
@@ -506,60 +557,80 @@ private fun createSinglePdfFromCbz(
     totalNumberOfImages: Int,
     zipFileEntriesList: List<ZipEntry>,
     outputFileName: String,
-    outputDirectory: File?,
+    outputDirectory: DocumentFile,
     subStepStatusAction: (String) -> Unit,
     zipFile: ZipFile,
-    outputFiles: MutableList<File>,
+    outputFiles: MutableList<DocumentFile>,
     contextHelper: ContextHelper,
     batchSize: Int,
     compressOutputPdf: Boolean
 ) {
     if (totalNumberOfImages > batchSize) {
-        val processedFile = createPdfWithBatchProcessing(
-            totalNumberOfImages = totalNumberOfImages,
-            zipFileEntriesList = zipFileEntriesList,
-            outputFileName = outputFileName,
-            outputDirectory = outputDirectory,
-            subStepStatusAction = subStepStatusAction,
-            zipFile = zipFile,
-            contextHelper = contextHelper,
-            batchSize = batchSize,
-            compressOutputPdf = compressOutputPdf
+        val target = contextHelper.createDocumentFile(
+            outputDirectory,
+            outputFileName,
+            "application/pdf"
         )
-        outputFiles.add(processedFile)
+        try {
+            val processedFile = createPdfWithBatchProcessing(
+                totalNumberOfImages = totalNumberOfImages,
+                zipFileEntriesList = zipFileEntriesList,
+                subStepStatusAction = subStepStatusAction,
+                zipFile = zipFile,
+                contextHelper = contextHelper,
+                batchSize = batchSize,
+                compressOutputPdf = compressOutputPdf,
+                targetDocument = target
+            )
+            outputFiles.add(processedFile)
+        } catch (t: Throwable) {
+            target.delete()
+            throw t
+        }
         return
     }
 
-    val outputFile = File(outputDirectory, outputFileName)
-
-    createPdfFromImageList(
-        imagesToProcess = zipFileEntriesList,
-        outputFile = outputFile,
-        zipFile = zipFile,
-        contextHelper = contextHelper,
-        subStepStatusAction = subStepStatusAction,
-        messageFormat = { currentImageIndex ->
-            "Processing image file $currentImageIndex of $totalNumberOfImages"
-        },
-        compressOutputPdf = compressOutputPdf
+    val outputFile = contextHelper.createDocumentFile(
+        outputDirectory,
+        outputFileName,
+        "application/pdf"
     )
 
-    outputFiles.add(outputFile)
+    try {
+        createPdfFromImageList(
+            imagesToProcess = zipFileEntriesList,
+            outputFile = outputFile,
+            zipFile = zipFile,
+            contextHelper = contextHelper,
+            subStepStatusAction = subStepStatusAction,
+            messageFormat = { currentImageIndex ->
+                "Processing image file $currentImageIndex of $totalNumberOfImages"
+            },
+            compressOutputPdf = compressOutputPdf
+        )
+
+        outputFiles.add(outputFile)
+    } catch (t: Throwable) {
+        outputFile.delete()
+        throw t
+    }
 }
 
 /**
- * Merge all PDFs in 'outputFiles' into a single PDF 'outputFileName' inside 'outputDirectory'.
- * Also clears and updates 'outputFiles' to contain only the merged file.
+ * Merge all PDFs in 'outputFiles' into the SAF target document.
+ * Also clears the temporary file list once the merge completes.
  */
 private fun mergePdfFiles(
-    outputDirectory: File?,
-    outputFileName: String,
+    targetDocument: DocumentFile,
     outputFiles: MutableList<File>,
-    compressOutputPdf: Boolean
+    compressOutputPdf: Boolean,
+    contextHelper: ContextHelper
 ) {
-    val outputFile = File(outputDirectory, outputFileName)
-    outputFile.outputStream().use { outputStream ->
-        createPdfWriter(outputStream, compressOutputPdf).use { writer ->
+    val outputStream = contextHelper.openOutputStream(targetDocument.uri)
+        ?: throw IOException("Unable to open output stream for ${targetDocument.uri}")
+
+    outputStream.use { stream ->
+        createPdfWriter(stream, compressOutputPdf).use { writer ->
             PdfDocument(writer).use { finalPdfDocument ->
                 val pdfMerger = PdfMerger(finalPdfDocument)
 
@@ -579,7 +650,6 @@ private fun mergePdfFiles(
     }
 
     outputFiles.clear()
-    outputFiles.add(outputFile)
 }
 
 /**

@@ -2,7 +2,6 @@ package com.joshiminh.cbzconverter.backend
 
 import android.content.Intent
 import android.net.Uri
-import android.os.Environment
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.ManagedActivityResultLauncher
@@ -10,7 +9,6 @@ import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import java.io.File
 import java.util.LinkedHashSet
 import java.util.logging.Level
 import java.util.logging.Logger
@@ -81,6 +79,9 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
     private val _overrideOutputDirectoryUri = MutableStateFlow<Uri?>(null)
     val overrideOutputDirectoryUri = _overrideOutputDirectoryUri.asStateFlow()
 
+    private val _hasWritableOutputDirectory = MutableStateFlow(false)
+    val hasWritableOutputDirectory = _hasWritableOutputDirectory.asStateFlow()
+
     private val _compressOutputPdf = MutableStateFlow(false)
     val compressOutputPdf = _compressOutputPdf.asStateFlow()
 
@@ -108,16 +109,11 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
         contextHelper.getPreferences().getString(PREF_MIHON_DIR, null)?.let {
             _mihonDirectoryUri.value = Uri.parse(it)
         }
+        refreshOutputDirectoryAvailability()
     }
 
     fun toggleMergeFilesOverride(newValue: Boolean) {
         _overrideMergeFiles.update { newValue }
-        if (newValue && !_canMergeSelection.value) {
-            contextHelper.showToast(
-                "Warning: merging files from different manga.",
-                Toast.LENGTH_LONG
-            )
-        }
     }
 
     fun toggleCompressOutputPdf(newValue: Boolean) {
@@ -183,6 +179,7 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
     fun updateOverrideOutputPathFromUserInput(newOverrideOutputPath: Uri) {
         _overrideOutputDirectoryUri.update { newOverrideOutputPath }
         appendTask("Output folder: set")
+        refreshOutputDirectoryAvailability()
     }
 
     fun updateUpdateSelectedFileUriFromUserInput(newSelectedFileUris: List<Uri>) {
@@ -198,21 +195,13 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
 
             cacheMetadataFor(ordered)
 
-            val canMerge = haveSameParent(ordered)
-            val hadOverrideEnabled = _overrideMergeFiles.value
-            _canMergeSelection.value = canMerge
+            _canMergeSelection.value = haveSameParent(ordered)
 
             val names = ordered.joinToString(separator = "\n") { it.displayName() }
 
             updateSelectedFileNameFromUserInput(names)
             setTask("Selected ${ordered.size} file(s)")
             setSubTask("Ready to convert")
-            if (hadOverrideEnabled && !canMerge) {
-                contextHelper.showToast(
-                    "Warning: merging files from different manga.",
-                    Toast.LENGTH_LONG
-                )
-            }
         } catch (_: Exception) {
             appendTask("File selection failed. Cleared")
             _selectedFileUri.update { emptyList() }
@@ -392,16 +381,21 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
     }
 
     fun convertToPDF(fileUris: List<Uri>, useParentDirectoryName: Boolean = false) {
-        val canMerge = haveSameParent(fileUris)
-        if (_overrideMergeFiles.value && !canMerge) {
-            appendTask("Warning: merging files from different manga")
-            contextHelper.showToast(
-                "Warning: merging files from different manga.",
-                Toast.LENGTH_LONG
-            )
+        if (_isCurrentlyConverting.value) {
+            return
         }
 
-        if (_isCurrentlyConverting.value) {
+        refreshOutputDirectoryAvailability()
+
+        val outputFolder = getOutputFolder()
+        if (outputFolder == null) {
+            viewModelScope.launch {
+                showToastAndTask(
+                    message = "Select an output directory before exporting.",
+                    toastLength = Toast.LENGTH_LONG,
+                    loggerLevel = Level.WARNING
+                )
+            }
             return
         }
 
@@ -409,7 +403,6 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
             setConverting(true)
 
             try {
-                val outputFolder = getOutputFolder()
                 val pdfFileNames = resolveFileNameConflicts(
                     getPdfFileNames(fileUris, useParentDirectoryName),
                     outputFolder
@@ -448,13 +441,14 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
         }
     }
 
-    private suspend fun handlePdfResult(pdfFiles: List<File>) {
+    private suspend fun handlePdfResult(pdfFiles: List<DocumentFile>) {
         if (pdfFiles.isEmpty()) {
             throw IllegalStateException("No PDFs created")
         }
 
         val msg = if (pdfFiles.size == 1) {
-            "Saved: ${pdfFiles.first().absolutePath}"
+            val saved = pdfFiles.first()
+            "Saved: ${saved.name ?: saved.uri}"
         } else {
             "Saved: ${pdfFiles.size} PDFs"
         }
@@ -647,8 +641,10 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
         return placeholders.contains(base)
     }
 
-    private fun resolveFileNameConflicts(names: List<String>, outputFolder: File): List<String> {
-        val existing = outputFolder.list()?.toMutableSet() ?: mutableSetOf()
+    private fun resolveFileNameConflicts(names: List<String>, outputFolder: DocumentFile): List<String> {
+        val existing = outputFolder.listFiles()
+            .mapNotNull { it.name }
+            .toMutableSet()
         return names.map { base ->
             var candidate = base
             val dotIndex = candidate.lastIndexOf('.')
@@ -664,14 +660,35 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
         }
     }
 
-    @Suppress("DEPRECATION")
-    private fun getOutputFolder(): File {
-        val defaultDownloads = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+    private fun getOutputFolder(): DocumentFile? {
         overrideOutputDirectoryUri.value?.let { uri ->
-            contextHelper.getOutputFolderUri(uri)?.let { return it }
+            contextHelper.getDocumentTree(uri)?.let { directory ->
+                if (directory.isWritableDirectory()) {
+                    return directory
+                }
+            }
         }
-        return defaultDownloads
+
+        val downloads = contextHelper.getDefaultDownloadsTree()
+        if (downloads.isWritableDirectory()) {
+            return downloads
+        }
+
+        return null
     }
+
+    private fun refreshOutputDirectoryAvailability() {
+        val overrideAvailable = overrideOutputDirectoryUri.value?.let { uri ->
+            contextHelper.getDocumentTree(uri).isWritableDirectory()
+        } ?: false
+
+        val defaultAvailable = contextHelper.getDefaultDownloadsTree().isWritableDirectory()
+
+        _hasWritableOutputDirectory.value = overrideAvailable || defaultAvailable
+    }
+
+    private fun DocumentFile?.isWritableDirectory(): Boolean =
+        this?.let { it.exists() && it.isDirectory && it.canWrite() } ?: false
 
     private suspend fun showToastAndTask(
         message: String,

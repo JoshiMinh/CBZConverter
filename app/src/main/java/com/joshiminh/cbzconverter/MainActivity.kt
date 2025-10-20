@@ -32,6 +32,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -110,6 +111,7 @@ fun MihonScreen(
     val batchSize by viewModel.batchSize.collectAsState()
     val overrideMergeFiles by viewModel.overrideMergeFiles.collectAsState()
     val overrideOutputDirectoryUri by viewModel.overrideOutputDirectoryUri.collectAsState()
+    val hasWritableOutputDirectory by viewModel.hasWritableOutputDirectory.collectAsState()
     val compressOutputPdf by viewModel.compressOutputPdf.collectAsState()
     val autoNameWithChapters by viewModel.autoNameWithChapters.collectAsState()
     val mihonDirectoryUri by viewModel.mihonDirectoryUri.collectAsState()
@@ -152,6 +154,7 @@ fun MihonScreen(
                 batchSize = batchSize,
                 overrideMergeFiles = overrideMergeFiles,
                 overrideOutputDirectoryUri = overrideOutputDirectoryUri,
+                hasWritableOutputDirectory = hasWritableOutputDirectory,
                 compressOutputPdf = compressOutputPdf,
                 autoNameWithChapters = autoNameWithChapters,
                 filePickerLauncher = filePickerLauncher,
@@ -187,6 +190,7 @@ private fun MihonMode(
     batchSize: Int,
     overrideMergeFiles: Boolean,
     overrideOutputDirectoryUri: Uri?,
+    hasWritableOutputDirectory: Boolean,
     compressOutputPdf: Boolean,
     autoNameWithChapters: Boolean,
     filePickerLauncher: ManagedActivityResultLauncher<Array<String>, List<Uri>>,
@@ -222,8 +226,20 @@ private fun MihonMode(
                 SelectionMode.Manual -> R.drawable.cbz
             },
             action = {
-                IconButton(onClick = { viewModel.updateSelectedFileUrisFromUserInput(emptyList()) }) {
-                    Icon(Icons.Filled.Delete, contentDescription = "Clear selection")
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = {
+                        selectionMode = if (selectionMode == SelectionMode.Mihon) {
+                            SelectionMode.Manual
+                        } else {
+                            SelectionMode.Mihon
+                        }
+                    }) {
+                        Icon(Icons.Filled.SwapHoriz, contentDescription = "Switch input mode")
+                    }
+
+                    IconButton(onClick = { viewModel.updateSelectedFileUrisFromUserInput(emptyList()) }) {
+                        Icon(Icons.Filled.Delete, contentDescription = "Clear selection")
+                    }
                 }
             }
         ) {
@@ -476,10 +492,20 @@ private fun MihonMode(
                     viewModel.convertToPDF(selectedFilesUri, useParentDirectoryName = true)
                 }
             },
-            enabled = selectedFilesUri.isNotEmpty() && !isCurrentlyConverting,
+            enabled =
+                selectedFilesUri.isNotEmpty() && !isCurrentlyConverting && hasWritableOutputDirectory,
             modifier = Modifier.fillMaxWidth()
         ) {
             Text("Export")
+        }
+
+        if (!hasWritableOutputDirectory) {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = "Select an output directory before exporting.",
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall
+            )
         }
 
         Spacer(Modifier.height(8.dp))
