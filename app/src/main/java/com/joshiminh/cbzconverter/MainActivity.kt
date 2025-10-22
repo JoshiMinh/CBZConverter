@@ -451,7 +451,7 @@ private fun MihonMode(
 
                         ConfigButtonItem(
                             title = "Output Directory",
-                            infoText = "Pick where converted PDFs will be saved.",
+                            infoText = "Pick where converted PDFs will be saved. Defaults to your Downloads folder until you choose another location.",
                             primaryText = overrideOutputDirectoryUri?.toString() ?: "Not set",
                             buttonText = "Select Output Directory",
                             enabled = !isCurrentlyConverting

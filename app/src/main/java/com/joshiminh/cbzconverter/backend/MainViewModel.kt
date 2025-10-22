@@ -111,8 +111,13 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
         preferences.getString(PREF_MIHON_DIR, null)?.let {
             _mihonDirectoryUri.value = Uri.parse(it)
         }
-        preferences.getString(PREF_EXPORT_DIR, null)?.let {
-            _overrideOutputDirectoryUri.value = Uri.parse(it)
+        val savedExportOverride = preferences.getString(PREF_EXPORT_DIR, null)
+        if (savedExportOverride != null) {
+            _overrideOutputDirectoryUri.value = Uri.parse(savedExportOverride)
+        } else {
+            contextHelper.getDefaultDownloadsTree()?.uri?.let { downloadsUri ->
+                _overrideOutputDirectoryUri.value = downloadsUri
+            }
         }
         refreshOutputDirectoryAvailability()
     }
