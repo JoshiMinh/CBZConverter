@@ -42,6 +42,7 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
         private const val DEFAULT_MAX_NUMBER_OF_PAGES = 1_000
         private const val DEFAULT_BATCH_SIZE = 200
         private const val PREF_MIHON_DIR = "mihon_directory"
+        private const val PREF_EXPORT_DIR = "export_directory"
     }
 
     private val logger = Logger.getLogger(MainViewModel::class.java.name)
@@ -106,8 +107,12 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
     private val cbzParentName = mutableMapOf<Uri, String>()
 
     init {
-        contextHelper.getPreferences().getString(PREF_MIHON_DIR, null)?.let {
+        val preferences = contextHelper.getPreferences()
+        preferences.getString(PREF_MIHON_DIR, null)?.let {
             _mihonDirectoryUri.value = Uri.parse(it)
+        }
+        preferences.getString(PREF_EXPORT_DIR, null)?.let {
+            _overrideOutputDirectoryUri.value = Uri.parse(it)
         }
         refreshOutputDirectoryAvailability()
     }
@@ -177,8 +182,24 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
     }
 
     fun updateOverrideOutputPathFromUserInput(newOverrideOutputPath: Uri) {
-        _overrideOutputDirectoryUri.update { newOverrideOutputPath }
-        appendTask("Output folder: set")
+        val contentResolver = contextHelper.getContext().contentResolver
+        val preferences = contextHelper.getPreferences()
+
+        try {
+            contentResolver.takePersistableUriPermission(
+                newOverrideOutputPath,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            )
+            preferences.edit().putString(PREF_EXPORT_DIR, newOverrideOutputPath.toString()).apply()
+            _overrideOutputDirectoryUri.update { newOverrideOutputPath }
+            appendTask("Output folder: set")
+        } catch (e: Exception) {
+            logger.warning("Failed to persist output directory permission: ${e.message}")
+            preferences.edit().remove(PREF_EXPORT_DIR).apply()
+            _overrideOutputDirectoryUri.update { null }
+            appendTask("Failed to save output folder. Using default downloads directory.")
+        }
+
         refreshOutputDirectoryAvailability()
     }
 
