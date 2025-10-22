@@ -2,10 +2,15 @@ package com.joshiminh.cbzconverter.components
 
 import android.net.Uri
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -59,6 +64,7 @@ fun MihonSelectionCard(
     mihonDirectoryUri: Uri?,
     isCurrentlyConverting: Boolean,
     onSelectMihonDirectory: () -> Unit,
+    onRefresh: () -> Unit,
     isLoadingMihonManga: Boolean,
     mihonLoadProgress: Float,
     mihonManga: List<MihonMangaEntry>,
@@ -80,12 +86,23 @@ fun MihonSelectionCard(
             overflow = TextOverflow.Ellipsis
         )
         Spacer(Modifier.height(8.dp))
-        Button(
-            onClick = onSelectMihonDirectory,
-            enabled = !isCurrentlyConverting,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text(if (mihonDirectoryUri == null) "Select Directory" else "Change Directory")
+        Row(Modifier.fillMaxWidth()) {
+            Button(
+                onClick = onSelectMihonDirectory,
+                enabled = !isCurrentlyConverting,
+                modifier = Modifier.weight(1f)
+            ) {
+                Text(if (mihonDirectoryUri == null) "Select Directory" else "Change Directory")
+            }
+            IconButton(
+                onClick = onRefresh,
+                enabled = !isCurrentlyConverting && !isLoadingMihonManga && mihonDirectoryUri != null
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Refresh,
+                    contentDescription = "Refresh Mihon library"
+                )
+            }
         }
 
         if (mihonDirectoryUri != null) {

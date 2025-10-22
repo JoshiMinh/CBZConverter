@@ -281,6 +281,11 @@ private fun MihonMode(
                             mihonDirectoryUri = mihonDirectoryUri,
                             isCurrentlyConverting = isCurrentlyConverting,
                             onSelectMihonDirectory = onSelectMihonDirectory,
+                            onRefresh = {
+                                if (mihonDirectoryUri != null && !isLoadingMihonManga) {
+                                    viewModel.refreshMihonManga()
+                                }
+                            },
                             isLoadingMihonManga = isLoadingMihonManga,
                             mihonLoadProgress = mihonLoadProgress,
                             mihonManga = mihonManga,
