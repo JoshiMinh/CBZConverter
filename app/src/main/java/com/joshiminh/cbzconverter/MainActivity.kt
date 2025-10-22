@@ -111,6 +111,7 @@ fun MihonScreen(
     val batchSize by viewModel.batchSize.collectAsState()
     val overrideMergeFiles by viewModel.overrideMergeFiles.collectAsState()
     val overrideOutputDirectoryUri by viewModel.overrideOutputDirectoryUri.collectAsState()
+    val effectiveOutputDirectoryUri by viewModel.effectiveOutputDirectoryUri.collectAsState()
     val hasWritableOutputDirectory by viewModel.hasWritableOutputDirectory.collectAsState()
     val compressOutputPdf by viewModel.compressOutputPdf.collectAsState()
     val autoNameWithChapters by viewModel.autoNameWithChapters.collectAsState()
@@ -154,6 +155,7 @@ fun MihonScreen(
                 batchSize = batchSize,
                 overrideMergeFiles = overrideMergeFiles,
                 overrideOutputDirectoryUri = overrideOutputDirectoryUri,
+                effectiveOutputDirectoryUri = effectiveOutputDirectoryUri,
                 hasWritableOutputDirectory = hasWritableOutputDirectory,
                 compressOutputPdf = compressOutputPdf,
                 autoNameWithChapters = autoNameWithChapters,
@@ -190,6 +192,7 @@ private fun MihonMode(
     batchSize: Int,
     overrideMergeFiles: Boolean,
     overrideOutputDirectoryUri: Uri?,
+    effectiveOutputDirectoryUri: Uri?,
     hasWritableOutputDirectory: Boolean,
     compressOutputPdf: Boolean,
     autoNameWithChapters: Boolean,
@@ -313,6 +316,7 @@ private fun MihonMode(
             autoNameWithChapters = autoNameWithChapters,
             onToggleAutoNameWithChapters = viewModel::toggleAutoNameWithChapters,
             overrideOutputDirectoryUri = overrideOutputDirectoryUri,
+            effectiveOutputDirectoryUri = effectiveOutputDirectoryUri,
             onSelectOutputDirectory = {
                 viewModel.checkPermissionAndSelectDirectoryAction(activity, directoryPickerLauncher)
             }
@@ -345,21 +349,30 @@ private fun MihonMode(
             },
             onOpenFileExplorer = {
                 val resolvedUri = when {
-                    overrideOutputDirectoryUri == null -> {
-                        DocumentsContract.buildDocumentUri(
-                            "com.android.externalstorage.documents",
-                            "primary:Download"
-                        )
-                    }
-
-                    DocumentsContract.isTreeUri(overrideOutputDirectoryUri) -> {
+                    overrideOutputDirectoryUri != null && DocumentsContract.isTreeUri(overrideOutputDirectoryUri) -> {
                         DocumentsContract.buildDocumentUriUsingTree(
                             overrideOutputDirectoryUri,
                             DocumentsContract.getTreeDocumentId(overrideOutputDirectoryUri)
                         )
                     }
 
-                    else -> overrideOutputDirectoryUri
+                    overrideOutputDirectoryUri != null -> overrideOutputDirectoryUri
+
+                    effectiveOutputDirectoryUri != null && DocumentsContract.isTreeUri(effectiveOutputDirectoryUri) -> {
+                        DocumentsContract.buildDocumentUriUsingTree(
+                            effectiveOutputDirectoryUri,
+                            DocumentsContract.getTreeDocumentId(effectiveOutputDirectoryUri)
+                        )
+                    }
+
+                    effectiveOutputDirectoryUri != null -> effectiveOutputDirectoryUri
+
+                    else -> {
+                        DocumentsContract.buildDocumentUri(
+                            "com.android.externalstorage.documents",
+                            "primary:Download"
+                        )
+                    }
                 }
 
                 val explorerIntent = Intent(Intent.ACTION_VIEW).apply {
@@ -520,6 +533,7 @@ private fun ConfigurationsSection(
     autoNameWithChapters: Boolean,
     onToggleAutoNameWithChapters: (Boolean) -> Unit,
     overrideOutputDirectoryUri: Uri?,
+    effectiveOutputDirectoryUri: Uri?,
     onSelectOutputDirectory: () -> Unit
 ) {
     var expanded by rememberSaveable { mutableStateOf(true) }
@@ -612,7 +626,19 @@ private fun ConfigurationsSection(
                     ConfigButtonItem(
                         title = "Output Directory",
                         infoText = "Pick where converted PDFs will be saved. Defaults to your Downloads folder until you choose another location.",
-                        primaryText = overrideOutputDirectoryUri?.toString() ?: "Not set",
+                        primaryText = when {
+                            overrideOutputDirectoryUri != null -> {
+                                if (DocumentsContract.isTreeUri(overrideOutputDirectoryUri)) {
+                                    DocumentsContract.getTreeDocumentId(overrideOutputDirectoryUri)
+                                } else {
+                                    overrideOutputDirectoryUri.toString()
+                                }
+                            }
+
+                            effectiveOutputDirectoryUri != null -> "Downloads (default)"
+
+                            else -> "Not set"
+                        },
                         buttonText = "Select Output Directory",
                         enabled = !isCurrentlyConverting
                     ) {

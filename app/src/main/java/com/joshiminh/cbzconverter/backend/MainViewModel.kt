@@ -14,7 +14,10 @@ import java.util.logging.Level
 import java.util.logging.Logger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -80,6 +83,11 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
     private val _overrideOutputDirectoryUri = MutableStateFlow<Uri?>(null)
     val overrideOutputDirectoryUri = _overrideOutputDirectoryUri.asStateFlow()
 
+    val effectiveOutputDirectoryUri = combine(overrideOutputDirectoryUri) { values ->
+        val overrideUri = values[0] as? Uri
+        overrideUri ?: contextHelper.getDefaultDownloadsTree()?.uri
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
     private val _hasWritableOutputDirectory = MutableStateFlow(false)
     val hasWritableOutputDirectory = _hasWritableOutputDirectory.asStateFlow()
 
@@ -111,13 +119,8 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
         preferences.getString(PREF_MIHON_DIR, null)?.let {
             _mihonDirectoryUri.value = Uri.parse(it)
         }
-        val savedExportOverride = preferences.getString(PREF_EXPORT_DIR, null)
-        if (savedExportOverride != null) {
+        preferences.getString(PREF_EXPORT_DIR, null)?.let { savedExportOverride ->
             _overrideOutputDirectoryUri.value = Uri.parse(savedExportOverride)
-        } else {
-            contextHelper.getDefaultDownloadsTree()?.uri?.let { downloadsUri ->
-                _overrideOutputDirectoryUri.value = downloadsUri
-            }
         }
         refreshOutputDirectoryAvailability()
     }
@@ -687,30 +690,18 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
     }
 
     private fun getOutputFolder(): DocumentFile? {
-        overrideOutputDirectoryUri.value?.let { uri ->
-            contextHelper.getDocumentTree(uri)?.let { directory ->
-                if (directory.isWritableDirectory()) {
-                    return directory
-                }
+        val effectiveUri = effectiveOutputDirectoryUri.value ?: return null
+        val directory = contextHelper.getDocumentTree(effectiveUri)
+            ?: if (overrideOutputDirectoryUri.value == null) {
+                contextHelper.getDefaultDownloadsTree()
+            } else {
+                null
             }
-        }
-
-        val downloads = contextHelper.getDefaultDownloadsTree()
-        if (downloads.isWritableDirectory()) {
-            return downloads
-        }
-
-        return null
+        return directory.takeIf { it.isWritableDirectory() }
     }
 
     private fun refreshOutputDirectoryAvailability() {
-        val overrideAvailable = overrideOutputDirectoryUri.value?.let { uri ->
-            contextHelper.getDocumentTree(uri).isWritableDirectory()
-        } ?: false
-
-        val defaultAvailable = contextHelper.getDefaultDownloadsTree().isWritableDirectory()
-
-        _hasWritableOutputDirectory.value = overrideAvailable || defaultAvailable
+        _hasWritableOutputDirectory.value = getOutputFolder() != null
     }
 
     private fun DocumentFile?.isWritableDirectory(): Boolean =
