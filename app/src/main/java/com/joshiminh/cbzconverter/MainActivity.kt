@@ -216,107 +216,43 @@ private fun MihonMode(
             .verticalScroll(rememberScrollState()),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        SectionCard(
-            title = when (selectionMode) {
-                SelectionMode.Mihon -> "Mihon Manga Selection"
-                SelectionMode.Manual -> "Direct Selection"
-            },
-            iconResId = when (selectionMode) {
-                SelectionMode.Mihon -> R.drawable.mihon
-                SelectionMode.Manual -> R.drawable.cbz
-            },
-            action = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = {
-                        selectionMode = if (selectionMode == SelectionMode.Mihon) {
-                            SelectionMode.Manual
-                        } else {
-                            SelectionMode.Mihon
+        SelectionModeSection(
+            selectionMode = selectionMode,
+            onSelectionModeChange = { selectionMode = it },
+            onClearSelection = { viewModel.updateSelectedFileUrisFromUserInput(emptyList()) },
+            mihonContent = {
+                MihonSelectionSection(
+                    mihonDirectoryUri = mihonDirectoryUri,
+                    isCurrentlyConverting = isCurrentlyConverting,
+                    onSelectMihonDirectory = onSelectMihonDirectory,
+                    onRefresh = {
+                        if (mihonDirectoryUri != null && !isLoadingMihonManga) {
+                            viewModel.refreshMihonManga()
                         }
-                    }) {
-                        Icon(Icons.Filled.SwapHoriz, contentDescription = "Switch input mode")
+                    },
+                    isLoadingMihonManga = isLoadingMihonManga,
+                    mihonLoadProgress = mihonLoadProgress,
+                    mihonManga = mihonManga,
+                    selectedFilesUri = selectedFilesUri,
+                    onToggleSelection = { uri, isSelected ->
+                        viewModel.setFileSelection(uri, isSelected)
+                    },
+                    onToggleGroup = { uris, isSelected ->
+                        viewModel.setFilesSelection(uris, isSelected)
                     }
-
-                    IconButton(onClick = { viewModel.updateSelectedFileUrisFromUserInput(emptyList()) }) {
-                        Icon(Icons.Filled.Delete, contentDescription = "Clear selection")
+                )
+            },
+            manualContent = {
+                ManualSelectionSection(
+                    selectedFileName = selectedFileName,
+                    selectedFilesUri = selectedFilesUri,
+                    isCurrentlyConverting = isCurrentlyConverting,
+                    onSelectFiles = {
+                        viewModel.checkPermissionAndSelectFileAction(activity, filePickerLauncher)
                     }
-                }
+                )
             }
-        ) {
-            val thresholdPx = with(LocalDensity.current) { 64.dp.toPx() }
-            var accumulatedDrag by remember { mutableStateOf(0f) }
-            val hintText = when (selectionMode) {
-                SelectionMode.Mihon -> "Swipe to open direct file selection."
-                SelectionMode.Manual -> "Swipe to browse Mihon downloads."
-            }
-
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .pointerInput(selectionMode) {
-                        detectHorizontalDragGestures(
-                            onDragStart = { accumulatedDrag = 0f },
-                            onHorizontalDrag = { _, dragAmount -> accumulatedDrag += dragAmount },
-                            onDragCancel = { accumulatedDrag = 0f },
-                            onDragEnd = {
-                                if (abs(accumulatedDrag) >= thresholdPx) {
-                                    selectionMode = if (selectionMode == SelectionMode.Mihon) {
-                                        SelectionMode.Manual
-                                    } else {
-                                        SelectionMode.Mihon
-                                    }
-                                }
-                                accumulatedDrag = 0f
-                            }
-                        )
-                    }
-            ) {
-                Crossfade(
-                    targetState = selectionMode,
-                    modifier = Modifier.fillMaxWidth(),
-                    label = "SelectionModeSwitcher"
-                ) { mode ->
-                    when (mode) {
-                        SelectionMode.Mihon -> MihonSelectionCard(
-                            mihonDirectoryUri = mihonDirectoryUri,
-                            isCurrentlyConverting = isCurrentlyConverting,
-                            onSelectMihonDirectory = onSelectMihonDirectory,
-                            onRefresh = {
-                                if (mihonDirectoryUri != null && !isLoadingMihonManga) {
-                                    viewModel.refreshMihonManga()
-                                }
-                            },
-                            isLoadingMihonManga = isLoadingMihonManga,
-                            mihonLoadProgress = mihonLoadProgress,
-                            mihonManga = mihonManga,
-                            selectedFilesUri = selectedFilesUri,
-                            onToggleSelection = { uri, isSelected ->
-                                viewModel.setFileSelection(uri, isSelected)
-                            },
-                            onToggleGroup = { uris, isSelected ->
-                                viewModel.setFilesSelection(uris, isSelected)
-                            }
-                        )
-
-                        SelectionMode.Manual -> ManualSelectionCard(
-                            selectedFileName = selectedFileName,
-                            selectedFilesUri = selectedFilesUri,
-                            isCurrentlyConverting = isCurrentlyConverting,
-                            onSelectFiles = {
-                                viewModel.checkPermissionAndSelectFileAction(activity, filePickerLauncher)
-                            }
-                        )
-                    }
-                }
-            }
-
-            Spacer(Modifier.height(8.dp))
-            Text(
-                text = hintText,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
+        )
 
         Spacer(Modifier.height(8.dp))
 
@@ -356,183 +292,58 @@ private fun MihonMode(
 
         Spacer(Modifier.height(8.dp))
 
-        ElevatedCard(
-            modifier = Modifier.fillMaxWidth(),
-            elevation = CardDefaults.elevatedCardElevation()
-        ) {
-            var expanded by rememberSaveable { mutableStateOf(true) }
-
-            Column(Modifier.padding(12.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        "Configurations",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.weight(1f)
-                    )
-                    IconButton(onClick = { expanded = !expanded }) {
-                        Icon(
-                            imageVector = if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
-                            contentDescription = if (expanded) "Collapse" else "Expand"
-                        )
-                    }
-                }
-
-                AnimatedVisibility(
-                    visible = expanded,
-                    enter = expandVertically(),
-                    exit = shrinkVertically()
-                ) {
-                    Column {
-                        Spacer(Modifier.height(8.dp))
-
-                        ConfigNumberItem(
-                            title = "Max Pages per PDF",
-                            infoText = "How many images go into a single PDF. Lower = more output files.",
-                            value = maxNumberOfPages.toString(),
-                            enabled = !isCurrentlyConverting,
-                            onValidNumber = { newValue ->
-                                viewModel.updateMaxNumberOfPagesSizeFromUserInput(newValue)
-                                focusManager.clearFocus()
-                            }
-                        )
-
-                        Spacer12Divider()
-
-                        ConfigNumberItem(
-                            title = "Memory Batch Size",
-                            infoText = "Processing chunk size. Reduce if you see OutOfMemory errors; increase for speed on strong devices.",
-                            value = batchSize.toString(),
-                            enabled = !isCurrentlyConverting,
-                            onValidNumber = { newValue ->
-                                viewModel.updateBatchSizeFromUserInput(newValue)
-                                focusManager.clearFocus()
-                            }
-                        )
-
-                        ConfigSwitchItem(
-                            title = "Merge All Files Into One",
-                            infoText = "Combine all selected CBZ files into a single PDF. If no custom name is set, the first file's name is used.",
-                            checked = overrideMergeFiles,
-                            enabled = !isCurrentlyConverting
-                        ) { viewModel.toggleMergeFilesOverride(it) }
-
-                        if (!canMergeSelection && selectedFilesUri.size > 1) {
-                            Spacer(Modifier.height(4.dp))
-                            Text(
-                                "Warning: selected files come from different manga. Double-check the order before merging.",
-                                color = MaterialTheme.colorScheme.error,
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                        }
-
-                        Spacer12Divider()
-
-                        ConfigSwitchItem(
-                            title = "Compress Output PDF",
-                            infoText = "Use compression to reduce PDF file size (slower processing).",
-                            checked = compressOutputPdf,
-                            enabled = !isCurrentlyConverting
-                        ) { viewModel.toggleCompressOutputPdf(it) }
-
-                        Spacer12Divider()
-
-                        ConfigSwitchItem(
-                            title = "Autonaming with Chapters",
-                            infoText = "Automatically name outputs using manga title and detected chapter numbers.",
-                            checked = autoNameWithChapters,
-                            enabled = !isCurrentlyConverting
-                        ) { viewModel.toggleAutoNameWithChapters(it) }
-
-                        Spacer12Divider()
-
-                        ConfigButtonItem(
-                            title = "Output Directory",
-                            infoText = "Pick where converted PDFs will be saved. Defaults to your Downloads folder until you choose another location.",
-                            primaryText = overrideOutputDirectoryUri?.toString() ?: "Not set",
-                            buttonText = "Select Output Directory",
-                            enabled = !isCurrentlyConverting
-                        ) {
-                            viewModel.checkPermissionAndSelectDirectoryAction(activity, directoryPickerLauncher)
-                        }
-                    }
-                }
+        ConfigurationsSection(
+            isCurrentlyConverting = isCurrentlyConverting,
+            maxNumberOfPages = maxNumberOfPages,
+            onMaxPagesChanged = { newValue ->
+                viewModel.updateMaxNumberOfPagesSizeFromUserInput(newValue)
+                focusManager.clearFocus()
+            },
+            batchSize = batchSize,
+            onBatchSizeChanged = { newValue ->
+                viewModel.updateBatchSizeFromUserInput(newValue)
+                focusManager.clearFocus()
+            },
+            overrideMergeFiles = overrideMergeFiles,
+            onToggleMergeFiles = viewModel::toggleMergeFilesOverride,
+            canMergeSelection = canMergeSelection,
+            selectedFilesUri = selectedFilesUri,
+            compressOutputPdf = compressOutputPdf,
+            onToggleCompressOutputPdf = viewModel::toggleCompressOutputPdf,
+            autoNameWithChapters = autoNameWithChapters,
+            onToggleAutoNameWithChapters = viewModel::toggleAutoNameWithChapters,
+            overrideOutputDirectoryUri = overrideOutputDirectoryUri,
+            onSelectOutputDirectory = {
+                viewModel.checkPermissionAndSelectDirectoryAction(activity, directoryPickerLauncher)
             }
-        }
+        )
 
         Spacer(Modifier.height(8.dp))
 
-        SectionCard(title = "Status") {
-            val taskColor = when {
-                currentTaskStatus.contains("Completed", ignoreCase = true) ||
-                        currentTaskStatus.contains("Created", ignoreCase = true) -> Color(0xFF4CAF50)
-                currentTaskStatus.contains("Failed", ignoreCase = true) ||
-                        currentTaskStatus.contains("Error", ignoreCase = true) -> Color(0xFFF44336)
-                else -> Color.Unspecified
-            }
-
-            Text(
-                text = "Progress: $currentTaskStatus",
-                fontWeight = FontWeight.SemiBold,
-                color = taskColor
-            )
-
-            Spacer(Modifier.height(8.dp))
-
-            LazyColumn(Modifier.height(130.dp)) {
-                items(currentSubTaskStatus.lines()) { line ->
-                    Text(line)
-                }
-            }
-        }
+        StatusSection(
+            currentTaskStatus = currentTaskStatus,
+            currentSubTaskStatus = currentSubTaskStatus
+        )
 
         Spacer(Modifier.height(12.dp))
-
-        Button(
-            onClick = {
+        ExportActionsSection(
+            isExportEnabled =
+                selectedFilesUri.isNotEmpty() && !isCurrentlyConverting && hasWritableOutputDirectory,
+            areActionsEnabled = !isCurrentlyConverting,
+            showMissingOutputWarning = !hasWritableOutputDirectory,
+            onExport = {
                 if (selectedFilesUri.isNotEmpty()) {
                     viewModel.convertToPDF(selectedFilesUri, useParentDirectoryName = true)
                 }
             },
-            enabled =
-                selectedFilesUri.isNotEmpty() && !isCurrentlyConverting && hasWritableOutputDirectory,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("Export")
-        }
-
-        if (!hasWritableOutputDirectory) {
-            Spacer(Modifier.height(4.dp))
-            Text(
-                text = "Select an output directory before exporting.",
-                color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodySmall
-            )
-        }
-
-        Spacer(Modifier.height(8.dp))
-
-        Button(
-            onClick = {
+            onSendToKindle = {
                 val intent = Intent(
                     Intent.ACTION_VIEW,
                     Uri.parse("https://www.amazon.com/gp/sendtokindle")
                 )
                 activity.startActivity(intent)
             },
-            enabled = !isCurrentlyConverting,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("Send to Kindle")
-        }
-
-        Spacer(Modifier.height(8.dp))
-
-        Button(
-            onClick = {
+            onOpenFileExplorer = {
                 val resolvedUri = when {
                     overrideOutputDirectoryUri == null -> {
                         DocumentsContract.buildDocumentUri(
@@ -564,13 +375,328 @@ private fun MihonMode(
 
                 runCatching { activity.startActivity(explorerIntent) }
                     .onFailure { activity.startActivity(fallbackIntent) }
-            },
-            enabled = !isCurrentlyConverting,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("Open File Explorer")
-        }
+            }
+        )
 
         Spacer(Modifier.height(12.dp))
+    }
+}
+
+@Composable
+private fun SelectionModeSection(
+    selectionMode: SelectionMode,
+    onSelectionModeChange: (SelectionMode) -> Unit,
+    onClearSelection: () -> Unit,
+    mihonContent: @Composable () -> Unit,
+    manualContent: @Composable () -> Unit
+) {
+    SectionCard(
+        title = when (selectionMode) {
+            SelectionMode.Mihon -> "Mihon Manga Selection"
+            SelectionMode.Manual -> "Direct Selection"
+        },
+        iconResId = when (selectionMode) {
+            SelectionMode.Mihon -> R.drawable.mihon
+            SelectionMode.Manual -> R.drawable.cbz
+        },
+        action = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = {
+                    onSelectionModeChange(
+                        if (selectionMode == SelectionMode.Mihon) SelectionMode.Manual else SelectionMode.Mihon
+                    )
+                }) {
+                    Icon(Icons.Filled.SwapHoriz, contentDescription = "Switch input mode")
+                }
+
+                IconButton(onClick = onClearSelection) {
+                    Icon(Icons.Filled.Delete, contentDescription = "Clear selection")
+                }
+            }
+        }
+    ) {
+        val thresholdPx = with(LocalDensity.current) { 64.dp.toPx() }
+        var accumulatedDrag by remember { mutableStateOf(0f) }
+        val hintText = when (selectionMode) {
+            SelectionMode.Mihon -> "Swipe to open direct file selection."
+            SelectionMode.Manual -> "Swipe to browse Mihon downloads."
+        }
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .pointerInput(selectionMode) {
+                    detectHorizontalDragGestures(
+                        onDragStart = { accumulatedDrag = 0f },
+                        onHorizontalDrag = { _, dragAmount -> accumulatedDrag += dragAmount },
+                        onDragCancel = { accumulatedDrag = 0f },
+                        onDragEnd = {
+                            if (abs(accumulatedDrag) >= thresholdPx) {
+                                onSelectionModeChange(
+                                    if (selectionMode == SelectionMode.Mihon) SelectionMode.Manual else SelectionMode.Mihon
+                                )
+                            }
+                            accumulatedDrag = 0f
+                        }
+                    )
+                }
+        ) {
+            Crossfade(
+                targetState = selectionMode,
+                modifier = Modifier.fillMaxWidth(),
+                label = "SelectionModeSwitcher"
+            ) { mode ->
+                when (mode) {
+                    SelectionMode.Mihon -> mihonContent()
+                    SelectionMode.Manual -> manualContent()
+                }
+            }
+        }
+
+        Spacer(Modifier.height(8.dp))
+        Text(
+            text = hintText,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Composable
+private fun MihonSelectionSection(
+    mihonDirectoryUri: Uri?,
+    isCurrentlyConverting: Boolean,
+    onSelectMihonDirectory: () -> Unit,
+    onRefresh: () -> Unit,
+    isLoadingMihonManga: Boolean,
+    mihonLoadProgress: Float,
+    mihonManga: List<MihonMangaEntry>,
+    selectedFilesUri: List<Uri>,
+    onToggleSelection: (Uri, Boolean) -> Unit,
+    onToggleGroup: (List<Uri>, Boolean) -> Unit
+) {
+    MihonSelectionCard(
+        mihonDirectoryUri = mihonDirectoryUri,
+        isCurrentlyConverting = isCurrentlyConverting,
+        onSelectMihonDirectory = onSelectMihonDirectory,
+        onRefresh = onRefresh,
+        isLoadingMihonManga = isLoadingMihonManga,
+        mihonLoadProgress = mihonLoadProgress,
+        mihonManga = mihonManga,
+        selectedFilesUri = selectedFilesUri,
+        onToggleSelection = onToggleSelection,
+        onToggleGroup = onToggleGroup
+    )
+}
+
+@Composable
+private fun ManualSelectionSection(
+    selectedFileName: String,
+    selectedFilesUri: List<Uri>,
+    isCurrentlyConverting: Boolean,
+    onSelectFiles: () -> Unit
+) {
+    ManualSelectionCard(
+        selectedFileName = selectedFileName,
+        selectedFilesUri = selectedFilesUri,
+        isCurrentlyConverting = isCurrentlyConverting,
+        onSelectFiles = onSelectFiles
+    )
+}
+
+@Composable
+private fun ConfigurationsSection(
+    isCurrentlyConverting: Boolean,
+    maxNumberOfPages: Int,
+    onMaxPagesChanged: (Int) -> Unit,
+    batchSize: Int,
+    onBatchSizeChanged: (Int) -> Unit,
+    overrideMergeFiles: Boolean,
+    onToggleMergeFiles: (Boolean) -> Unit,
+    canMergeSelection: Boolean,
+    selectedFilesUri: List<Uri>,
+    compressOutputPdf: Boolean,
+    onToggleCompressOutputPdf: (Boolean) -> Unit,
+    autoNameWithChapters: Boolean,
+    onToggleAutoNameWithChapters: (Boolean) -> Unit,
+    overrideOutputDirectoryUri: Uri?,
+    onSelectOutputDirectory: () -> Unit
+) {
+    var expanded by rememberSaveable { mutableStateOf(true) }
+
+    ElevatedCard(
+        modifier = Modifier.fillMaxWidth(),
+        elevation = CardDefaults.elevatedCardElevation()
+    ) {
+        Column(Modifier.padding(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "Configurations",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f)
+                )
+                IconButton(onClick = { expanded = !expanded }) {
+                    Icon(
+                        imageVector = if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                        contentDescription = if (expanded) "Collapse" else "Expand"
+                    )
+                }
+            }
+
+            AnimatedVisibility(
+                visible = expanded,
+                enter = expandVertically(),
+                exit = shrinkVertically()
+            ) {
+                Column {
+                    Spacer(Modifier.height(8.dp))
+
+                    ConfigNumberItem(
+                        title = "Max Pages per PDF",
+                        infoText = "How many images go into a single PDF. Lower = more output files.",
+                        value = maxNumberOfPages.toString(),
+                        enabled = !isCurrentlyConverting,
+                        onValidNumber = onMaxPagesChanged
+                    )
+
+                    Spacer12Divider()
+
+                    ConfigNumberItem(
+                        title = "Memory Batch Size",
+                        infoText = "Processing chunk size. Reduce if you see OutOfMemory errors; increase for speed on strong devices.",
+                        value = batchSize.toString(),
+                        enabled = !isCurrentlyConverting,
+                        onValidNumber = onBatchSizeChanged
+                    )
+
+                    ConfigSwitchItem(
+                        title = "Merge All Files Into One",
+                        infoText = "Combine all selected CBZ files into a single PDF. If no custom name is set, the first file's name is used.",
+                        checked = overrideMergeFiles,
+                        enabled = !isCurrentlyConverting
+                    ) { onToggleMergeFiles(it) }
+
+                    if (!canMergeSelection && selectedFilesUri.size > 1) {
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            "Warning: selected files come from different manga. Double-check the order before merging.",
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+
+                    Spacer12Divider()
+
+                    ConfigSwitchItem(
+                        title = "Compress Output PDF",
+                        infoText = "Use compression to reduce PDF file size (slower processing).",
+                        checked = compressOutputPdf,
+                        enabled = !isCurrentlyConverting
+                    ) { onToggleCompressOutputPdf(it) }
+
+                    Spacer12Divider()
+
+                    ConfigSwitchItem(
+                        title = "Autonaming with Chapters",
+                        infoText = "Automatically name outputs using manga title and detected chapter numbers.",
+                        checked = autoNameWithChapters,
+                        enabled = !isCurrentlyConverting
+                    ) { onToggleAutoNameWithChapters(it) }
+
+                    Spacer12Divider()
+
+                    ConfigButtonItem(
+                        title = "Output Directory",
+                        infoText = "Pick where converted PDFs will be saved. Defaults to your Downloads folder until you choose another location.",
+                        primaryText = overrideOutputDirectoryUri?.toString() ?: "Not set",
+                        buttonText = "Select Output Directory",
+                        enabled = !isCurrentlyConverting
+                    ) {
+                        onSelectOutputDirectory()
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StatusSection(
+    currentTaskStatus: String,
+    currentSubTaskStatus: String
+) {
+    SectionCard(title = "Status") {
+        val taskColor = when {
+            currentTaskStatus.contains("Completed", ignoreCase = true) ||
+                    currentTaskStatus.contains("Created", ignoreCase = true) -> Color(0xFF4CAF50)
+            currentTaskStatus.contains("Failed", ignoreCase = true) ||
+                    currentTaskStatus.contains("Error", ignoreCase = true) -> Color(0xFFF44336)
+            else -> Color.Unspecified
+        }
+
+        Text(
+            text = "Progress: $currentTaskStatus",
+            fontWeight = FontWeight.SemiBold,
+            color = taskColor
+        )
+
+        Spacer(Modifier.height(8.dp))
+
+        LazyColumn(Modifier.height(130.dp)) {
+            items(currentSubTaskStatus.lines()) { line ->
+                Text(line)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ExportActionsSection(
+    isExportEnabled: Boolean,
+    areActionsEnabled: Boolean,
+    showMissingOutputWarning: Boolean,
+    onExport: () -> Unit,
+    onSendToKindle: () -> Unit,
+    onOpenFileExplorer: () -> Unit
+) {
+    Button(
+        onClick = onExport,
+        enabled = isExportEnabled,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Text("Export")
+    }
+
+    if (showMissingOutputWarning) {
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text = "Select an output directory before exporting.",
+            color = MaterialTheme.colorScheme.error,
+            style = MaterialTheme.typography.bodySmall
+        )
+    }
+
+    Spacer(Modifier.height(8.dp))
+
+    Button(
+        onClick = onSendToKindle,
+        enabled = areActionsEnabled,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Text("Send to Kindle")
+    }
+
+    Spacer(Modifier.height(8.dp))
+
+    Button(
+        onClick = onOpenFileExplorer,
+        enabled = areActionsEnabled,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Text("Open File Explorer")
     }
 }
