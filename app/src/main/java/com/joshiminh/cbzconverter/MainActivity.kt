@@ -574,7 +574,7 @@ private fun ConfigurationsSection(
                         infoText = "How many images go into a single PDF. Lower = more output files.",
                         value = maxNumberOfPages.toString(),
                         enabled = !isCurrentlyConverting,
-                        onValidNumber = onMaxPagesChanged
+                        onValidNumber = { value -> onMaxPagesChanged(value.toInt()) }
                     )
 
                     Spacer12Divider()
@@ -584,7 +584,7 @@ private fun ConfigurationsSection(
                         infoText = "Processing chunk size. Reduce if you see OutOfMemory errors; increase for speed on strong devices.",
                         value = batchSize.toString(),
                         enabled = !isCurrentlyConverting,
-                        onValidNumber = onBatchSizeChanged
+                        onValidNumber = { value -> onBatchSizeChanged(value.toInt()) }
                     )
 
                     ConfigSwitchItem(
