@@ -374,39 +374,62 @@ class MainViewModel(private val contextHelper: ContextHelper) : ViewModel() {
                 val root = DocumentFile.fromTreeUri(ctx, rootUri) ?: return@launch
                 val downloads = root.findFile("downloads") ?: return@launch
 
-                val extensionDirs = downloads.listFiles().filter { it.isDirectory }
-                val mangaDirs = extensionDirs.flatMap { ext ->
-                    ext.listFiles().filter { it.isDirectory }
+                val entries = loadMihonLibrary(downloads) { completed, total ->
+                    val safeTotal = total.takeIf { it > 0 } ?: 1
+                    val safeCompleted = completed.coerceIn(0, safeTotal)
+                    _mihonLoadProgress.value = safeCompleted / safeTotal.toFloat()
                 }
-                val total = mangaDirs.size.takeIf { it > 0 } ?: 1
-                val result = mutableListOf<MihonMangaEntry>()
-                cbzParentName.clear()
-                parentNameCache.clear()
-                parentUriCache.clear()
 
-                mangaDirs.forEachIndexed { index, manga ->
-                    val mangaName = manga.name ?: "Unknown"
-                    val cbzFiles = manga.listFiles()
-                        .filter { !it.isDirectory && it.name?.endsWith(".cbz", true) == true }
-                        .map { file ->
-                            val displayName = file.name ?: "Unknown"
-                            cbzParentName[file.uri] = mangaName
-                            parentNameCache[file.uri] = mangaName
-                            parentUriCache[file.uri] = manga.uri
-                            fileNameCache[file.uri] = displayName
-                            MihonCbzFile(displayName, file.uri)
-                        }
-
-                    if (cbzFiles.isNotEmpty()) {
-                        result.add(MihonMangaEntry(mangaName, cbzFiles))
-                    }
-                    _mihonLoadProgress.value = (index + 1) / total.toFloat()
-                }
-                _mihonMangaEntries.value = result.sortedBy { it.name.lowercase() }
+                _mihonMangaEntries.value = entries.sortedBy { it.name.lowercase() }
             } finally {
                 _isLoadingMihonManga.value = false
             }
         }
+    }
+
+    private suspend fun loadMihonLibrary(
+        root: DocumentFile,
+        onProgress: (Int, Int) -> Unit,
+    ): List<MihonMangaEntry> {
+        val extensionDirs = root.listFiles().filter { it.isDirectory }
+        val mangaDirs = extensionDirs.flatMap { ext ->
+            ext.listFiles().filter { it.isDirectory }
+        }
+
+        val denominator = mangaDirs.size.takeIf { it > 0 } ?: 1
+
+        cbzParentName.clear()
+        parentNameCache.clear()
+        parentUriCache.clear()
+
+        if (mangaDirs.isEmpty()) {
+            onProgress(0, denominator)
+            return emptyList()
+        }
+
+        val result = mutableListOf<MihonMangaEntry>()
+
+        mangaDirs.forEachIndexed { index, manga ->
+            val mangaName = manga.name ?: "Unknown"
+            val cbzFiles = manga.listFiles()
+                .filter { !it.isDirectory && it.name?.endsWith(".cbz", true) == true }
+                .map { file ->
+                    val displayName = file.name ?: "Unknown"
+                    cbzParentName[file.uri] = mangaName
+                    parentNameCache[file.uri] = mangaName
+                    parentUriCache[file.uri] = manga.uri
+                    fileNameCache[file.uri] = displayName
+                    MihonCbzFile(displayName, file.uri)
+                }
+
+            if (cbzFiles.isNotEmpty()) {
+                result.add(MihonMangaEntry(mangaName, cbzFiles))
+            }
+
+            onProgress(index + 1, denominator)
+        }
+
+        return result
     }
 
     fun convertToPDF(fileUris: List<Uri>, useParentDirectoryName: Boolean = false) {
