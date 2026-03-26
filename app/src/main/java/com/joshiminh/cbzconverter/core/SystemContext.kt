@@ -15,8 +15,11 @@ import java.io.IOException
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 
-class ContextHelper(private val context: Context) {
+data class MihonCbzFile(val name: String, val uri: Uri)
+data class MihonMangaEntry(val name: String, val files: List<MihonCbzFile>)
+data class SelectedFileInfo(val displayName: String, val parentName: String?)
 
+class ContextHelper(private val context: Context) {
     fun getFileName(uri: Uri): String {
         val candidates = buildList {
             if (uri.scheme.equals("content", ignoreCase = true)) {
@@ -55,15 +58,10 @@ class ContextHelper(private val context: Context) {
     private fun trimQuotes(s: String): String = s.trim().trim('"', '\'')
 
     private fun isMeaningful(name: String): Boolean {
-        val base = name.lowercase()
-            .substringBeforeLast('.')
-            .replace(Regex("\\s*\\(\\d+\\)$"), "")
-            .replace(Regex("[-_\\s]*\\d+$"), "")
-            .trim()
-
+        val base = name.lowercase().substringBeforeLast('.').trim()
         if (base.isBlank()) return false
-        val placeholders = listOf("document", "file", "download", "content", "item", "untitled")
-        return placeholders.none { base == it || base.startsWith("$it ") || base.startsWith("${it}_") || base.startsWith("$it-") }
+        val placeholders = listOf("document", "file", "download", "content", "untitled")
+        return placeholders.none { base == it || base.startsWith("$it ") || base.startsWith("${it}_") }
     }
 
     @JvmOverloads
@@ -81,43 +79,26 @@ class ContextHelper(private val context: Context) {
         val authority = "com.android.externalstorage.documents"
         val treeUri = DocumentsContract.buildTreeDocumentUri(authority, "primary:Download")
         val resolver = context.contentResolver
-
         val documentId = DocumentsContract.getTreeDocumentId(treeUri)
         val documentUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, documentId)
 
         val hasPersistedGrant = resolver.persistedUriPermissions.any { permission ->
-            val hasReadWrite = permission.isReadPermission && permission.isWritePermission
-            val targetsDownloads = permission.uri == treeUri || permission.uri == documentUri
-            hasReadWrite && targetsDownloads
+            permission.isReadPermission && permission.isWritePermission &&
+                    (permission.uri == treeUri || permission.uri == documentUri)
         }
 
-        if (!hasPersistedGrant) {
-            return null
-        }
+        if (!hasPersistedGrant) return null
 
         return DocumentFileCompat.fromUri(context, documentUri)
             ?: DocumentFileCompat.fromUri(context, treeUri)
-            ?: return null
     }
 
     @Throws(IOException::class)
     fun createDocumentFile(parent: DocumentFile, fileName: String, mimeType: String): DocumentFile {
-        parent.findFile(fileName)?.let { existing ->
-            if (existing.exists()) {
-                if (!existing.delete()) {
-                    throw IOException("Unable to replace existing file: $fileName")
-                }
-            }
-        }
-
-        val newDocumentUri = DocumentsContract.createDocument(
-            context.contentResolver,
-            parent.uri,
-            mimeType,
-            fileName
-        ) ?: throw IOException("Unable to create file: $fileName")
-
-        return DocumentFile.fromSingleUri(context, newDocumentUri)
+        parent.findFile(fileName)?.let { if (it.exists()) it.delete() }
+        val uri = DocumentsContract.createDocument(context.contentResolver, parent.uri, mimeType, fileName)
+            ?: throw IOException("Unable to create file: $fileName")
+        return DocumentFile.fromSingleUri(context, uri)
             ?: throw IOException("Unable to resolve created file: $fileName")
     }
 
@@ -128,9 +109,7 @@ class ContextHelper(private val context: Context) {
         context.contentResolver.openOutputStream(uri, mode)?.buffered()
 
     fun getCacheDir(): File = context.cacheDir
-
     fun getPreferences(): SharedPreferences =
         context.getSharedPreferences("cbz_converter_prefs", Context.MODE_PRIVATE)
-
     fun getContext(): Context = context
 }
