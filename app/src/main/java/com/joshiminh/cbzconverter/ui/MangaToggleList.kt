@@ -1,4 +1,4 @@
-package com.joshiminh.cbzconverter.components
+package com.joshiminh.cbzconverter.ui
 
 import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
@@ -30,7 +30,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.joshiminh.cbzconverter.backend.MihonMangaEntry
+import com.joshiminh.cbzconverter.core.MihonMangaEntry
 
 @Composable
 fun MangaToggleList(

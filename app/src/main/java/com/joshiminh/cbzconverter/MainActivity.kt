@@ -58,18 +58,17 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.joshiminh.cbzconverter.R
-import com.joshiminh.cbzconverter.backend.ContextHelper
-import com.joshiminh.cbzconverter.backend.MainViewModel
-import com.joshiminh.cbzconverter.backend.MihonMangaEntry
-import com.joshiminh.cbzconverter.components.ConfigButtonItem
-import com.joshiminh.cbzconverter.components.ConfigNumberItem
-import com.joshiminh.cbzconverter.components.ConfigSwitchItem
-import com.joshiminh.cbzconverter.components.ManualSelectionCard
-import com.joshiminh.cbzconverter.components.MihonSelectionCard
-import com.joshiminh.cbzconverter.components.SectionCard
-import com.joshiminh.cbzconverter.components.SelectedFilesList
-import com.joshiminh.cbzconverter.components.Spacer12Divider
+import com.joshiminh.cbzconverter.core.ContextHelper
+import com.joshiminh.cbzconverter.core.MainViewModel
+import com.joshiminh.cbzconverter.core.MihonMangaEntry
+import com.joshiminh.cbzconverter.ui.ConfigButtonItem
+import com.joshiminh.cbzconverter.ui.ConfigNumberItem
+import com.joshiminh.cbzconverter.ui.ConfigSwitchItem
+import com.joshiminh.cbzconverter.ui.ManualSelectionCard
+import com.joshiminh.cbzconverter.ui.MihonSelectionCard
+import com.joshiminh.cbzconverter.ui.SectionCard
+import com.joshiminh.cbzconverter.ui.SelectedFilesList
+import com.joshiminh.cbzconverter.ui.Spacer12Divider
 import kotlin.math.abs
 
 class MainActivity : ComponentActivity() {

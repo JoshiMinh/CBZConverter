@@ -1,4 +1,4 @@
-package com.joshiminh.cbzconverter.components
+package com.joshiminh.cbzconverter.ui
 
 import android.net.Uri
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
@@ -35,7 +35,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.joshiminh.cbzconverter.backend.SelectedFileInfo
+import com.joshiminh.cbzconverter.core.SelectedFileInfo
 
 @Composable
 fun SelectedFilesList(

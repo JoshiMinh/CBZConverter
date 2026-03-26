@@ -1,4 +1,4 @@
-package com.joshiminh.cbzconverter.backend
+package com.joshiminh.cbzconverter.core
 
 import android.content.Context
 import android.content.SharedPreferences

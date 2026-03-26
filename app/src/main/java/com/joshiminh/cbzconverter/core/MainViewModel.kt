@@ -1,4 +1,4 @@
-package com.joshiminh.cbzconverter.backend
+package com.joshiminh.cbzconverter.core
 
 import android.content.Intent
 import android.net.Uri

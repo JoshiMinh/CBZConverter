@@ -1,4 +1,4 @@
-package com.joshiminh.cbzconverter.components
+package com.joshiminh.cbzconverter.ui
 
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.Image

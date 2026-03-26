@@ -1,4 +1,4 @@
-package com.joshiminh.cbzconverter.backend
+package com.joshiminh.cbzconverter.core
 
 import android.Manifest
 import android.content.pm.PackageManager
