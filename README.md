@@ -5,9 +5,6 @@
   
   A powerful and efficient Android app to convert your <code>.cbz</code> manga archives into <code>.pdf</code> files directly on your device.
 
-  <a href="https://ko-fi.com/joshiminh" target="_blank">
-    <img src="https://img.shields.io/badge/Ko--fi-F16061?style=for-the-badge&logo=ko-fi&logoColor=white" alt="Support on Ko-fi" />
-  </a>
 </div>
 
 ## ✨ Features
